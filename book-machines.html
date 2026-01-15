@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Equipment Booking</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+			rel="stylesheet"
+		/>
+		<style>
+			:root {
+				--bg: #f8fbff;
+				--accent: #4361ee;
+				--accent-soft: #edf2ff;
+				--text: #0f172a;
+				--muted: #64748b;
+				--card: #ffffff;
+				font-size: 16px;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				font-family: "Space Grotesk", "Segoe UI", Tahoma, sans-serif;
+				color: var(--text);
+				background: radial-gradient(circle at top, #eef3ff, var(--bg));
+				min-height: 100vh;
+			}
+
+			/* Shared header/search layout (matches index.html) */
+			header {
+				padding: 1.5rem clamp(1.5rem, 5vw, 4rem);
+				background: var(--card);
+				border-bottom: 1px solid #e2e8f0;
+				box-shadow: 0 30px 60px rgba(15, 23, 42, 0.05);
+				position: sticky;
+				top: 0;
+				z-index: 10;
+			}
+
+			.banner {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 2rem;
+			}
+
+			.banner h1 {
+				margin: 0;
+				font-size: clamp(1.5rem, 3vw, 2.2rem);
+				font-weight: 600;
+			}
+
+			.banner-actions {
+				display: flex;
+				align-items: center;
+				gap: 0.75rem;
+			}
+
+			.search-bar {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+				padding: 0.35rem 0.75rem;
+				border-radius: 999px;
+				border: 1px solid #d7def0;
+				background: var(--accent-soft);
+			}
+
+			.search-bar input {
+				border: none;
+				background: transparent;
+				font-family: inherit;
+				font-size: 0.95rem;
+				min-width: 11rem;
+				color: var(--text);
+			}
+
+			.search-bar input:focus {
+				outline: none;
+			}
+
+			.icon-button {
+				width: 42px;
+				height: 42px;
+				border-radius: 50%;
+				border: none;
+				background: var(--accent-soft);
+				display: grid;
+				place-items: center;
+				cursor: pointer;
+				transition: background 0.2s ease, transform 0.2s ease;
+			}
+
+			.icon-button:hover {
+				background: #dfe7ff;
+				transform: translateY(-1px);
+			}
+
+			.icon-button svg {
+				width: 20px;
+				height: 20px;
+				fill: var(--accent);
+			}
+
+			main {
+				padding: clamp(2rem, 5vw, 4rem);
+			}
+
+			.hero {
+				max-width: 720px;
+				margin-bottom: 2rem;
+			}
+
+			.hero p {
+				color: var(--muted);
+				line-height: 1.6;
+			}
+
+			.booking-panel {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+				gap: 1.5rem;
+			}
+
+			.card {
+				background: var(--card);
+				padding: 1.5rem;
+				border-radius: 1rem;
+				border: 1px solid #e2e8f0;
+				box-shadow: 0 15px 35px rgba(76, 81, 191, 0.08);
+			}
+
+			.card h2 {
+				margin-top: 0;
+				font-size: 1.1rem;
+			}
+
+			.card p {
+				color: var(--muted);
+				margin-bottom: 1rem;
+			}
+
+			.card form {
+				display: grid;
+				gap: 0.75rem;
+			}
+
+			.calendar-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+				gap: 1rem;
+				margin-bottom: 1.5rem;
+			}
+
+			.calendar-day {
+				background: var(--accent-soft);
+				border-radius: 0.8rem;
+				padding: 0.75rem;
+				border: 1px solid #d7def0;
+			}
+
+			.calendar-day h3 {
+				margin: 0 0 0.35rem;
+				font-size: 0.95rem;
+			}
+
+			.calendar-day ul,
+			.maintenance-list ul {
+				list-style: none;
+				padding: 0;
+				margin: 0;
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+
+			.calendar-day li + li,
+			.maintenance-list li + li {
+				margin-top: 0.35rem;
+			}
+
+			.maintenance-list h3 {
+				margin: 0 0 0.4rem;
+				font-size: 0.95rem;
+			}
+
+			label span {
+				display: block;
+				font-size: 0.9rem;
+				margin-bottom: 0.2rem;
+				color: var(--muted);
+			}
+
+			.card form input,
+			.card form select,
+			.card form button {
+				font-family: inherit;
+				font-size: 1rem;
+			}
+
+			.card form input,
+			.card form select {
+				padding: 0.65rem 0.85rem;
+				border-radius: 0.6rem;
+				border: 1px solid #d7def0;
+				background: #fdfdff;
+			}
+
+			.card form input[type="time"]::-webkit-calendar-picker-indicator {
+				filter: grayscale(1);
+			}
+
+			button.primary {
+				padding: 0.75rem 1rem;
+				border-radius: 0.75rem;
+				border: none;
+				background: var(--accent);
+				color: #fff;
+				font-weight: 600;
+				cursor: pointer;
+				transition: transform 0.2s ease, box-shadow 0.2s ease;
+			}
+
+			button.primary:hover {
+				transform: translateY(-2px);
+				box-shadow: 0 15px 35px rgba(67, 97, 238, 0.3);
+			}
+
+			@media (max-width: 640px) {
+				.banner {
+					flex-direction: column;
+					align-items: flex-start;
+				}
+
+				.banner-actions {
+					width: 100%;
+					justify-content: space-between;
+					flex-wrap: wrap;
+				}
+
+				.search-bar {
+					flex: 1;
+				}
+
+				.search-bar input {
+					min-width: 0;
+					width: 100%;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+			<div class="banner">
+				<h1>Welcome to TP AMC's Management System</h1>
+				<div class="banner-actions">
+					<label class="search-bar" aria-label="Search the platform">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							role="img"
+							aria-hidden="true"
+						>
+							<path
+								d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm0-2a9 9 0 1 0 5.9 15.7l4.2 4.2 1.4-1.4-4.2-4.2A9 9 0 0 0 11 2z"
+							/>
+						</svg>
+						<input type="search" placeholder="Search" />
+					</label>
+					<button class="icon-button" aria-label="Notifications">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							role="img"
+							aria-hidden="true"
+						>
+							<path
+								d="M12 3a6 6 0 0 0-6 6v3.6l-1.6 2.7A1 1 0 0 0 5.3 17H18.7a1 1 0 0 0 .9-1.7L18 12.6V9a6 6 0 0 0-6-6zm0 19a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3z"
+							/>
+						</svg>
+					</button>
+					<button class="icon-button" aria-label="Profile">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							role="img"
+							aria-hidden="true"
+						>
+							<path
+								d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-3.3 0-9 1.7-9 5v2h18v-2c0-3.3-5.7-5-9-5z"
+							/>
+						</svg>
+					</button>
+				</div>
+			</div>
+		</header>
+		<main>
+			<section class="hero">
+				<h2>Equipment Booking</h2>
+				<p>
+					Reserve production machinery before you arrive on site, verify availability
+					at a glance, and keep every booking aligned with safety and maintenance
+					requirements.
+				</p>
+			</section>
+			<section class="booking-panel">
+				<article class="card">
+					<h2>Schedule a Machine</h2>
+					<p>Pick the equipment, date, and duration you need.</p>
+					<form>
+						<label>
+							<span>Machine</span>
+							<select>
+								<option>Laser Cutter</option>
+								<option>3D Printer</option>
+								<option>CNC Mill</option>
+							</select>
+						</label>
+						<label>
+							<span>Date</span>
+							<input type="date" />
+						</label>
+						<label>
+							<span>Time</span>
+							<input type="time" />
+						</label>
+						<label>
+							<span>Duration</span>
+							<select>
+								<option>30 minutes</option>
+								<option>1 hour</option>
+								<option>2 hours</option>
+							</select>
+						</label>
+						<button type="button" class="primary">Submit Booking</button>
+					</form>
+				</article>
+				<article class="card">
+					<h2>Upcoming Reservations</h2>
+					<p>Review confirmed slots and manage approvals.</p>
+					<ul>
+						<li>Laser Cutter — Jan 22, 09:00-10:00</li>
+						<li>3D Printer — Jan 23, 13:00-15:00</li>
+						<li>CNC Mill — Jan 24, 08:00-09:30</li>
+					</ul>
+				</article>
+				<article class="card">
+					<h2>Availability Calendar</h2>
+					<p>See open slots by day and track machines under maintenance.</p>
+					<div class="calendar-grid">
+						<div class="calendar-day">
+							<h3>Mon</h3>
+							<ul>
+								<li>3D Printer — 10:00-12:00</li>
+								<li>CNC Mill — 14:00-16:00</li>
+							</ul>
+						</div>
+						<div class="calendar-day">
+							<h3>Tue</h3>
+							<ul>
+								<li>Laser Cutter — 08:00-09:00</li>
+								<li>3D Printer — 15:00-17:00</li>
+							</ul>
+						</div>
+						<div class="calendar-day">
+							<h3>Wed</h3>
+							<ul>
+								<li>CNC Mill — 09:30-11:00</li>
+								<li>Laser Cutter — 13:00-14:30</li>
+							</ul>
+						</div>
+						<div class="calendar-day">
+							<h3>Thu</h3>
+							<ul>
+								<li>3D Printer — 11:00-12:30</li>
+								<li>CNC Mill — 16:00-18:00</li>
+							</ul>
+						</div>
+						<div class="calendar-day">
+							<h3>Fri</h3>
+							<ul>
+								<li>Laser Cutter — 09:00-10:30</li>
+								<li>3D Printer — 14:00-15:00</li>
+							</ul>
+						</div>
+					</div>
+					<div class="maintenance-list">
+						<h3>Machines in Maintenance</h3>
+						<ul>
+							<li>Laser Cutter — Safety recalibration (through Jan 20)</li>
+							<li>CNC Mill — Spindle replacement (Jan 25-26)</li>
+						</ul>
+					</div>
+				</article>
+			</section>
+		</main>
+	</body>
+</html>
