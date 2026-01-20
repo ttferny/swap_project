@@ -1,3 +1,6 @@
+<?php
+require_once __DIR__ . '/db.php';
+?>
 <!DOCTYPE html>
 <html lang="en">
 	<head>
@@ -238,15 +241,15 @@
 				</p>
 			</div>
 			<section class="grid">
-				<a class="card" href="/book-machines">
+				<a class="card" href="/swap_project/book-machines.php">
 					<h2>Book Machines</h2>
 					<p>View and book machines in advance.</p>
 				</a>
-				<a class="card" href="/learning-space">
+				<a class="card" href="/swap_project/learning-space.php">
 					<h2>Learning Space</h2>
 					<p>Find your training content, safety guidelines, and certificates here.</p>
 				</a>
-				<a class="card" href="/report-fault">
+				<a class="card" href="/swap_project/report-fault.php">
 					<h2>Report Fault</h2>
 					<p>Report whatever faults and safety hazards you see here.</p>
 				</a>

@@ -1,3 +1,36 @@
+<?php
+require_once __DIR__ . '/db.php';
+
+$equipment = [];
+$equipmentError = null;
+
+$equipmentResult = mysqli_query($conn, "SELECT * FROM equipment");
+if ($equipmentResult === false) {
+	$equipmentError = 'Unable to load equipment data: ' . mysqli_error($conn);
+} else {
+	while ($row = mysqli_fetch_assoc($equipmentResult)) {
+		$name = $row['machine_name'] ?? $row['name'] ?? $row['equipment_name'] ?? null;
+		if ($name === null) {
+			$firstValue = null;
+			foreach ($row as $value) {
+				if (is_string($value) && $value !== '') {
+					$firstValue = $value;
+					break;
+				}
+			}
+			// Fall back to the first non-empty string if no canonical machine name column exists.
+			$name = $firstValue ?? 'Unnamed Machine';
+		}
+
+		$equipment[] = [
+			'id' => $row['id'] ?? null,
+			'name' => $name,
+		];
+	}
+
+	mysqli_free_result($equipmentResult);
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 	<head>
@@ -212,6 +245,21 @@
 				background: #fdfdff;
 			}
 
+			.alert {
+				margin-bottom: 1.5rem;
+				padding: 0.85rem 1rem;
+				border-radius: 0.8rem;
+				background: #fef3c7;
+				border: 1px solid #fde68a;
+				color: #92400e;
+			}
+
+			.empty-state {
+				margin: 0;
+				color: var(--muted);
+				font-style: italic;
+			}
+
 			.card form input[type="time"]::-webkit-calendar-picker-indicator {
 				filter: grayscale(1);
 			}
@@ -309,6 +357,15 @@
 					requirements.
 				</p>
 			</section>
+			<?php if ($equipmentError): ?>
+				<div class="alert" role="alert">
+					<?php echo htmlspecialchars($equipmentError, ENT_QUOTES); ?>
+				</div>
+			<?php elseif (empty($equipment)): ?>
+				<div class="alert" role="status">
+					No equipment records found yet. Add machines to the database to enable bookings.
+				</div>
+			<?php endif; ?>
 			<section class="booking-panel">
 				<article class="card">
 					<h2>Schedule a Machine</h2>
@@ -316,10 +373,17 @@
 					<form>
 						<label>
 							<span>Machine</span>
-							<select>
-								<option>Laser Cutter</option>
-								<option>3D Printer</option>
-								<option>CNC Mill</option>
+							<select name="machine_id">
+								<?php if (!empty($equipment)): ?>
+									<option value="">Select a machine</option>
+									<?php foreach ($equipment as $machine): ?>
+										<option value="<?php echo htmlspecialchars((string)($machine['id'] ?? $machine['name']), ENT_QUOTES); ?>">
+											<?php echo htmlspecialchars($machine['name'], ENT_QUOTES); ?>
+										</option>
+									<?php endforeach; ?>
+								<?php else: ?>
+									<option value="">No machines available</option>
+								<?php endif; ?>
 							</select>
 						</label>
 						<label>
@@ -342,13 +406,17 @@
 					</form>
 				</article>
 				<article class="card">
-					<h2>Upcoming Reservations</h2>
-					<p>Review confirmed slots and manage approvals.</p>
-					<ul>
-						<li>Laser Cutter — Jan 22, 09:00-10:00</li>
-						<li>3D Printer — Jan 23, 13:00-15:00</li>
-						<li>CNC Mill — Jan 24, 08:00-09:30</li>
-					</ul>
+					<h2>Available Machines</h2>
+					<p>Live list sourced from the equipment table.</p>
+					<?php if (!empty($equipment)): ?>
+						<ul>
+							<?php foreach ($equipment as $machine): ?>
+								<li><?php echo htmlspecialchars($machine['name'], ENT_QUOTES); ?></li>
+							<?php endforeach; ?>
+						</ul>
+					<?php else: ?>
+						<p class="empty-state">No machines available yet.</p>
+					<?php endif; ?>
 				</article>
 				<article class="card">
 					<h2>Availability Calendar</h2>
