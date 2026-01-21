@@ -1,5 +1,13 @@
 <?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+	session_start();
+}
 require_once __DIR__ . '/db.php';
+
+$userFullName = trim((string) ($_SESSION['full_name'] ?? ''));
+if ($userFullName === '') {
+	$userFullName = 'Guest User';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -249,7 +257,7 @@ require_once __DIR__ . '/db.php';
 		</header>
 		<main>
 			<div class="intro">
-				<h2>Admin controls are on the way</h2>
+				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
 					This placeholder view mirrors the main dashboard while we finish building account
 					management, role provisioning, and analytics for administrators. Use this space to

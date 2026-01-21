@@ -1,5 +1,13 @@
 <?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+	session_start();
+}
 require_once __DIR__ . '/db.php';
+
+$userFullName = trim((string) ($_SESSION['full_name'] ?? ''));
+if ($userFullName === '') {
+	$userFullName = 'Guest User';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -249,17 +257,17 @@ require_once __DIR__ . '/db.php';
 		</header>
 		<main>
 			<div class="intro">
-				<h2>Manager tools are in progress</h2>
+				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
 					This interim screen mirrors the dashboard layout so stakeholders can review layout
 					options while resource planning, reporting, and communications modules are built.
 				</p>
 			</div>
 			<section class="grid">
-				<div class="card">
-					<h2>Team Scheduling</h2>
-					<p>Future timeline for shift coverage, technician assignments, and PTO requests.</p>
-				</div>
+				<a class="card" href="approve-bookings.php">
+					<h2>Approve Booking Requests</h2>
+					<p>Review pending waitlist submissions and approve equipment reservations.</p>
+				</a>
 				<div class="card">
 					<h2>Performance Insights</h2>
 					<p>Placeholder KPIs for MTTR, compliance, and utilization across all sites.</p>

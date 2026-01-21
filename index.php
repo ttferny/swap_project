@@ -1,5 +1,13 @@
 <?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+	session_start();
+}
 require_once __DIR__ . '/db.php';
+
+$userFullName = trim((string) ($_SESSION['full_name'] ?? ''));
+if ($userFullName === '') {
+	$userFullName = 'Guest User';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -233,7 +241,7 @@ require_once __DIR__ . '/db.php';
 		</header>
 		<main>
 			<div class="intro">
-				<h2>TP AMC Management System</h2>
+				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
 					Streamline asset maintenance, ensure compliance, and keep every service
 					request on track from a single, modern dashboard designed for teams of

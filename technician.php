@@ -1,5 +1,13 @@
 <?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+	session_start();
+}
 require_once __DIR__ . '/db.php';
+
+$userFullName = trim((string) ($_SESSION['full_name'] ?? ''));
+if ($userFullName === '') {
+	$userFullName = 'Guest User';
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -249,7 +257,7 @@ require_once __DIR__ . '/db.php';
 		</header>
 		<main>
 			<div class="intro">
-				<h2>Technician toolkit preview</h2>
+				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
 					This page will soon power job assignments, checklists, and rapid fault reporting.
 					For now it mirrors the home layout so routing and navigation decisions can be

@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	}
 
 	if (empty($errors)) {
-		$sql = 'SELECT u.user_id, u.role_id, u.tp_admin_no, u.password_hash, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.tp_admin_no = ? LIMIT 1';
+		$sql = 'SELECT u.user_id, u.role_id, u.tp_admin_no, u.password_hash, u.full_name, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.tp_admin_no = ? LIMIT 1';
 		$stmt = mysqli_prepare($conn, $sql);
 		if ($stmt === false) {
 			$errors[] = 'Unable to prepare login statement. Please try again later.';
@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				$_SESSION['admin_number'] = $user['tp_admin_no'];
 				$_SESSION['role_id'] = $user['role_id'];
 				$_SESSION['role_name'] = $user['role_name'];
+				$_SESSION['full_name'] = $user['full_name'];
 
 				$roleKey = strtolower(trim($user['role_name'] ?? ''));
 				$destination = null;

@@ -1,14 +1,46 @@
 <?php
+if (session_status() !== PHP_SESSION_ACTIVE) {
+	session_start();
+}
+
 require_once __DIR__ . '/db.php';
 
+$currentUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+$bookingMessages = [
+	'success' => [],
+	'error' => [],
+];
+$cancelMessages = [
+	'success' => [],
+	'error' => [],
+];
+$durationOptions = [
+	'30' => '30 minutes',
+	'60' => '1 hour',
+	'90' => '1 hour 30 minutes',
+	'120' => '2 hours',
+	'150' => '2 hours 30 minutes',
+	'180' => '3 hours',
+];
+
+$formValues = [
+	'machine_id' => '',
+	'date' => '',
+	'time' => '',
+	'duration' => '60',
+	'notes' => '',
+];
+
 $equipment = [];
+$equipmentById = [];
 $equipmentError = null;
 
-$equipmentResult = mysqli_query($conn, "SELECT * FROM equipment");
+$equipmentResult = mysqli_query($conn, 'SELECT * FROM equipment');
 if ($equipmentResult === false) {
 	$equipmentError = 'Unable to load equipment data: ' . mysqli_error($conn);
 } else {
 	while ($row = mysqli_fetch_assoc($equipmentResult)) {
+		$equipmentId = $row['equipment_id'] ?? ($row['id'] ?? null);
 		$name = $row['machine_name'] ?? $row['name'] ?? $row['equipment_name'] ?? null;
 		if ($name === null) {
 			$firstValue = null;
@@ -23,12 +55,400 @@ if ($equipmentResult === false) {
 		}
 
 		$equipment[] = [
-			'id' => $row['id'] ?? null,
+			'id' => $equipmentId,
 			'name' => $name,
 		];
+		if ($equipmentId !== null) {
+			$equipmentById[(string) $equipmentId] = $name;
+		}
 	}
 
 	mysqli_free_result($equipmentResult);
+}
+
+function truncateAuditText(?string $value, int $limit): string
+{
+	$value = (string) $value;
+	if ($limit <= 0) {
+		return '';
+	}
+	$lengthFn = function_exists('mb_strlen') ? 'mb_strlen' : 'strlen';
+	$substrFn = function_exists('mb_substr') ? 'mb_substr' : 'substr';
+	if ($lengthFn($value) > $limit) {
+		return $substrFn($value, 0, $limit);
+	}
+	return $value;
+}
+
+function logAuditEntry(mysqli $conn, ?int $actorId, string $action, string $entityType, ?int $entityId, array $details = []): void
+{
+	static $cachedIp = null;
+	static $cachedAgent = null;
+	$action = truncateAuditText($action, 80);
+	$entityType = truncateAuditText($entityType, 40);
+	if ($cachedIp === null) {
+		$rawIp = isset($_SERVER['REMOTE_ADDR']) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+		$cachedIp = $rawIp !== '' ? substr($rawIp, 0, 45) : null;
+	}
+	if ($cachedAgent === null) {
+		$rawAgent = isset($_SERVER['HTTP_USER_AGENT']) ? (string) $_SERVER['HTTP_USER_AGENT'] : '';
+		$cachedAgent = $rawAgent !== '' ? truncateAuditText($rawAgent, 255) : null;
+	}
+	$detailsJson = null;
+	if (!empty($details)) {
+		$json = json_encode($details, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+		if ($json !== false) {
+			$detailsJson = $json;
+		}
+	}
+	$stmt = mysqli_prepare(
+		$conn,
+		'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, ip_address, user_agent, details) VALUES (?, ?, ?, ?, ?, ?, ?)'
+	);
+	if ($stmt) {
+		mysqli_stmt_bind_param($stmt, 'ississs', $actorId, $action, $entityType, $entityId, $cachedIp, $cachedAgent, $detailsJson);
+		mysqli_stmt_execute($stmt);
+		mysqli_stmt_close($stmt);
+	}
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+	$formType = $_POST['form_type'] ?? 'submit_booking';
+	if ($formType === 'cancel_booking') {
+		$bookingIdRaw = trim((string) ($_POST['booking_id'] ?? ''));
+		if ($currentUserId === null) {
+			$cancelMessages['error'][] = 'Please sign in before cancelling a booking.';
+		} elseif ($bookingIdRaw === '' || !ctype_digit($bookingIdRaw)) {
+			$cancelMessages['error'][] = 'Invalid booking reference.';
+		} else {
+			$bookingId = (int) $bookingIdRaw;
+			$cancelStmt = mysqli_prepare(
+				$conn,
+				"UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = ?, updated_at = NOW() WHERE booking_id = ? AND requester_id = ? AND status IN ('pending', 'approved')"
+			);
+			if ($cancelStmt) {
+				mysqli_stmt_bind_param($cancelStmt, 'iii', $currentUserId, $bookingId, $currentUserId);
+				mysqli_stmt_execute($cancelStmt);
+				if (mysqli_stmt_affected_rows($cancelStmt) === 1) {
+					logAuditEntry(
+						$conn,
+						$currentUserId,
+						'booking_cancelled',
+						'bookings',
+						$bookingId,
+						['cancelled_by' => $currentUserId]
+					);
+					$cancelMessages['success'][] = 'Booking cancelled successfully. Waitlisted requests will be notified automatically.';
+					promoteMatchingWaitlist($conn, $bookingId, $currentUserId);
+				} else {
+					$cancelMessages['error'][] = 'Unable to cancel that booking. It may already be processed.';
+				}
+				mysqli_stmt_close($cancelStmt);
+			} else {
+				$cancelMessages['error'][] = 'Unable to process cancellation right now.';
+			}
+		}
+	} else {
+		$formValues['machine_id'] = trim((string) ($_POST['machine_id'] ?? ''));
+		$formValues['date'] = trim((string) ($_POST['booking_date'] ?? ''));
+		$formValues['time'] = trim((string) ($_POST['booking_time'] ?? ''));
+		$formValues['duration'] = trim((string) ($_POST['booking_duration'] ?? $formValues['duration']));
+		$formValues['notes'] = trim((string) ($_POST['booking_notes'] ?? ''));
+
+		if ($currentUserId === null) {
+			$bookingMessages['error'][] = 'Please sign in before sending a booking request.';
+		}
+
+		if ($formValues['machine_id'] === '' || !ctype_digit($formValues['machine_id']) || !isset($equipmentById[$formValues['machine_id']])) {
+			$bookingMessages['error'][] = 'Select a valid machine to continue.';
+		}
+
+		if ($formValues['date'] === '') {
+			$bookingMessages['error'][] = 'Pick a booking date.';
+		}
+
+		if ($formValues['time'] === '') {
+			$bookingMessages['error'][] = 'Enter a preferred start time.';
+		}
+
+		if (!isset($durationOptions[$formValues['duration']])) {
+			$bookingMessages['error'][] = 'Select a valid duration option.';
+		}
+
+		$noteLength = function_exists('mb_strlen') ? mb_strlen($formValues['notes']) : strlen($formValues['notes']);
+		if ($noteLength > 255) {
+			$bookingMessages['error'][] = 'Notes must be 255 characters or fewer.';
+		}
+
+		$bookingStart = null;
+		$bookingEnd = null;
+		if (empty($bookingMessages['error'])) {
+			$bookingStart = DateTime::createFromFormat('Y-m-d H:i', $formValues['date'] . ' ' . $formValues['time']);
+			if ($bookingStart === false) {
+				$bookingMessages['error'][] = 'Enter a valid booking date and time.';
+			} else {
+				$bookingEnd = clone $bookingStart;
+				$bookingEnd->modify('+' . (int) $formValues['duration'] . ' minutes');
+			}
+		}
+
+		if (empty($bookingMessages['error']) && $bookingStart && $bookingEnd) {
+			$equipmentIdInt = (int) $formValues['machine_id'];
+			$desiredStartStr = $bookingStart->format('Y-m-d H:i:s');
+			$desiredEndStr = $bookingEnd->format('Y-m-d H:i:s');
+			$noteParam = $formValues['notes'] === '' ? 'Booking submitted via portal.' : $formValues['notes'];
+			$noteParam = function_exists('mb_substr') ? mb_substr($noteParam, 0, 255) : substr($noteParam, 0, 255);
+
+			$conflictStmt = mysqli_prepare(
+				$conn,
+				"SELECT booking_id FROM bookings WHERE equipment_id = ? AND status IN ('pending', 'approved') AND start_time < ? AND end_time > ? LIMIT 1"
+			);
+			if ($conflictStmt === false) {
+				$bookingMessages['error'][] = 'Could not verify equipment availability.';
+			} else {
+				mysqli_stmt_bind_param($conflictStmt, 'iss', $equipmentIdInt, $desiredEndStr, $desiredStartStr);
+				mysqli_stmt_execute($conflictStmt);
+				mysqli_stmt_store_result($conflictStmt);
+				$hasConflict = mysqli_stmt_num_rows($conflictStmt) > 0;
+				mysqli_stmt_close($conflictStmt);
+
+				if ($hasConflict) {
+					$waitlistSql = "INSERT INTO booking_waitlist (equipment_id, user_id, desired_start, desired_end, note) VALUES (?, ?, ?, ?, NULLIF(?, ''))";
+					$waitlistStmt = mysqli_prepare($conn, $waitlistSql);
+					if ($waitlistStmt === false) {
+						$bookingMessages['error'][] = 'Unable to add you to the waitlist right now.';
+					} else {
+						mysqli_stmt_bind_param(
+							$waitlistStmt,
+							'iisss',
+							$equipmentIdInt,
+							$currentUserId,
+							$desiredStartStr,
+							$desiredEndStr,
+							$formValues['notes']
+						);
+						if (mysqli_stmt_execute($waitlistStmt)) {
+							$waitlistId = mysqli_insert_id($conn) ?: null;
+							logAuditEntry(
+								$conn,
+								$currentUserId,
+								'waitlist_created',
+								'booking_waitlist',
+								$waitlistId,
+								[
+									'equipment_id' => $equipmentIdInt,
+									'from_booking_id' => null,
+									'desired_start' => $desiredStartStr,
+									'desired_end' => $desiredEndStr,
+								]
+							);
+							$bookingMessages['success'][] = 'That slot is currently booked. Your request is pending on the waitlist, and we will notify you if it opens up.';
+							$formValues = [
+								'machine_id' => '',
+								'date' => '',
+								'time' => '',
+								'duration' => '60',
+								'notes' => '',
+							];
+						} else {
+							$bookingMessages['error'][] = 'We could not add you to the waitlist. Please try again.';
+						}
+						mysqli_stmt_close($waitlistStmt);
+					}
+				} else {
+					$bookingSql = "INSERT INTO bookings (equipment_id, requester_id, start_time, end_time, purpose, status, requires_approval) VALUES (?, ?, ?, ?, ?, 'pending', 1)";
+					$bookingStmt = mysqli_prepare($conn, $bookingSql);
+					if ($bookingStmt === false) {
+						$bookingMessages['error'][] = 'Unable to submit your booking. Please try again shortly.';
+					} else {
+						mysqli_stmt_bind_param(
+							$bookingStmt,
+							'iisss',
+							$equipmentIdInt,
+							$currentUserId,
+							$desiredStartStr,
+							$desiredEndStr,
+							$noteParam
+						);
+						if (mysqli_stmt_execute($bookingStmt)) {
+							$newBookingId = mysqli_insert_id($conn) ?: null;
+							logAuditEntry(
+								$conn,
+								$currentUserId,
+								'booking_created',
+								'bookings',
+								$newBookingId,
+								[
+									'equipment_id' => $equipmentIdInt,
+									'purpose' => $noteParam,
+									'origin' => 'portal_booking_form',
+								]
+							);
+							$bookingMessages['success'][] = 'Booking submitted and awaiting manager approval.';
+							$formValues = [
+								'machine_id' => '',
+								'date' => '',
+								'time' => '',
+								'duration' => '60',
+								'notes' => '',
+							];
+						} else {
+							$bookingMessages['error'][] = 'We could not save your booking request. Please try again.';
+						}
+						mysqli_stmt_close($bookingStmt);
+					}
+				}
+			}
+		}
+	}
+}
+
+$userBookings = [];
+if ($currentUserId !== null) {
+	$userBookingsSql = 'SELECT b.booking_id, b.start_time, b.end_time, b.status, b.rejection_reason, e.name AS equipment_name FROM bookings b INNER JOIN equipment e ON e.equipment_id = b.equipment_id WHERE b.requester_id = ? ORDER BY b.start_time ASC';
+	$userBookingsStmt = mysqli_prepare($conn, $userBookingsSql);
+	if ($userBookingsStmt) {
+		mysqli_stmt_bind_param($userBookingsStmt, 'i', $currentUserId);
+		mysqli_stmt_execute($userBookingsStmt);
+		$result = mysqli_stmt_get_result($userBookingsStmt);
+		if ($result) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$userBookings[] = $row;
+			}
+			mysqli_free_result($result);
+		}
+		mysqli_stmt_close($userBookingsStmt);
+	}
+}
+
+function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = null): void
+{
+	$bookingStmt = mysqli_prepare(
+		$conn,
+		' SELECT equipment_id, start_time, end_time FROM bookings WHERE booking_id = ? LIMIT 1 '
+	);
+	if (!$bookingStmt) {
+		return;
+	}
+	mysqli_stmt_bind_param($bookingStmt, 'i', $bookingId);
+	mysqli_stmt_execute($bookingStmt);
+	$result = mysqli_stmt_get_result($bookingStmt);
+	$bookingRow = $result ? mysqli_fetch_assoc($result) : null;
+	if ($result) {
+		mysqli_free_result($result);
+	}
+	mysqli_stmt_close($bookingStmt);
+	if (!$bookingRow) {
+		return;
+	}
+	$equipmentId = (int) $bookingRow['equipment_id'];
+	$startTime = $bookingRow['start_time'];
+	$endTime = $bookingRow['end_time'];
+	if ($equipmentId <= 0 || $startTime === null || $endTime === null) {
+		return;
+	}
+	$waitlistStmt = mysqli_prepare(
+		$conn,
+		' SELECT waitlist_id, user_id, note FROM booking_waitlist WHERE equipment_id = ? AND desired_start = ? AND desired_end = ? ORDER BY created_at ASC LIMIT 1 '
+	);
+	if (!$waitlistStmt) {
+		return;
+	}
+	mysqli_stmt_bind_param($waitlistStmt, 'iss', $equipmentId, $startTime, $endTime);
+	mysqli_stmt_execute($waitlistStmt);
+	$waitlistResult = mysqli_stmt_get_result($waitlistStmt);
+	$waitlistEntry = $waitlistResult ? mysqli_fetch_assoc($waitlistResult) : null;
+	if ($waitlistResult) {
+		mysqli_free_result($waitlistResult);
+	}
+	mysqli_stmt_close($waitlistStmt);
+	if (!$waitlistEntry) {
+		return;
+	}
+	$slotCheckStmt = mysqli_prepare(
+		$conn,
+		"SELECT 1 FROM bookings WHERE equipment_id = ? AND status IN ('pending', 'approved') AND start_time < ? AND end_time > ? LIMIT 1"
+	);
+	if ($slotCheckStmt) {
+		mysqli_stmt_bind_param($slotCheckStmt, 'iss', $equipmentId, $endTime, $startTime);
+		mysqli_stmt_execute($slotCheckStmt);
+		mysqli_stmt_store_result($slotCheckStmt);
+		$slotTaken = mysqli_stmt_num_rows($slotCheckStmt) > 0;
+		mysqli_stmt_close($slotCheckStmt);
+		if ($slotTaken) {
+			return;
+		}
+	}
+	$purpose = trim((string) ($waitlistEntry['note'] ?? ''));
+	if ($purpose === '') {
+		$purpose = 'Auto-promoted from waitlist.';
+	}
+	$purpose = function_exists('mb_substr') ? mb_substr($purpose, 0, 255) : substr($purpose, 0, 255);
+	mysqli_begin_transaction($conn);
+	$newBookingId = null;
+	$insertStmt = mysqli_prepare(
+		$conn,
+		"INSERT INTO bookings (equipment_id, requester_id, start_time, end_time, purpose, status, requires_approval) VALUES (?, ?, ?, ?, ?, 'pending', 1)"
+	);
+	if (!$insertStmt) {
+		mysqli_rollback($conn);
+		return;
+	}
+	$requesterId = (int) $waitlistEntry['user_id'];
+	mysqli_stmt_bind_param(
+		$insertStmt,
+		'iisss',
+		$equipmentId,
+		$requesterId,
+		$startTime,
+		$endTime,
+		$purpose
+	);
+	if (!mysqli_stmt_execute($insertStmt)) {
+		mysqli_stmt_close($insertStmt);
+		mysqli_rollback($conn);
+		return;
+	}
+	$newBookingId = mysqli_insert_id($conn) ?: null;
+	mysqli_stmt_close($insertStmt);
+	$deleteStmt = mysqli_prepare($conn, 'DELETE FROM booking_waitlist WHERE waitlist_id = ?');
+	if (!$deleteStmt) {
+		mysqli_rollback($conn);
+		return;
+	}
+	$waitlistId = (int) $waitlistEntry['waitlist_id'];
+	mysqli_stmt_bind_param($deleteStmt, 'i', $waitlistId);
+	if (!mysqli_stmt_execute($deleteStmt)) {
+		mysqli_stmt_close($deleteStmt);
+		mysqli_rollback($conn);
+		return;
+	}
+	mysqli_stmt_close($deleteStmt);
+	mysqli_commit($conn);
+	logAuditEntry(
+		$conn,
+		$actorId,
+		'booking_created_from_waitlist',
+		'bookings',
+		$newBookingId,
+		[
+			'equipment_id' => $equipmentId,
+			'waitlist_id' => $waitlistId,
+			'desired_start' => $startTime,
+			'desired_end' => $endTime,
+		]
+	);
+	logAuditEntry(
+		$conn,
+		$actorId,
+		'waitlist_removed',
+		'booking_waitlist',
+			$waitlistId,
+		[
+			'reason' => 'promoted_to_booking',
+			'moved_booking_id' => $newBookingId,
+		]
+	);
 }
 ?>
 <!DOCTYPE html>
@@ -223,6 +643,87 @@ if ($equipmentResult === false) {
 				font-size: 0.95rem;
 			}
 
+			.table-wrapper {
+				overflow-x: auto;
+			}
+
+			.table-wrapper.compact {
+				margin-top: 1rem;
+			}
+
+			.data-table {
+				width: 100%;
+				border-collapse: collapse;
+			}
+
+			.data-table th,
+			.data-table td {
+				font-size: 0.9rem;
+				text-align: left;
+				padding: 0.7rem 0.4rem;
+				border-bottom: 1px solid #e2e8f0;
+			}
+
+			.data-table th {
+				color: var(--muted);
+				font-weight: 600;
+			}
+
+			.data-table tr:last-child td {
+				border-bottom: none;
+			}
+
+			.table-actions {
+				text-align: right;
+			}
+
+			.status-badge {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				padding: 0.15rem 0.65rem;
+				border-radius: 999px;
+				font-size: 0.8rem;
+				font-weight: 600;
+			}
+
+			.rejection-reason {
+				margin-top: 0.35rem;
+				font-size: 0.85rem;
+				color: #991b1b;
+				line-height: 1.3;
+			}
+
+			.status-pending {
+				background: var(--accent-soft);
+				color: var(--accent);
+			}
+
+			.status-approved {
+				background: #dcfce7;
+				color: #166534;
+			}
+
+			.status-cancelled,
+			.status-rejected {
+				background: #fee2e2;
+				color: #991b1b;
+			}
+
+			button.ghost {
+				padding: 0.35rem 0.75rem;
+				border-radius: 0.6rem;
+				border: 1px solid #cbd5f5;
+				background: transparent;
+				font-weight: 600;
+				cursor: pointer;
+			}
+
+			button.ghost.danger {
+				border-color: #fda4af;
+				color: #be123c;
+			}
+
 			label span {
 				display: block;
 				font-size: 0.9rem;
@@ -230,19 +731,41 @@ if ($equipmentResult === false) {
 				color: var(--muted);
 			}
 
+			.muted-text {
+				color: var(--muted);
+				font-size: 0.85rem;
+			}
+
 			.card form input,
 			.card form select,
+			.card form textarea,
 			.card form button {
 				font-family: inherit;
 				font-size: 1rem;
 			}
 
 			.card form input,
-			.card form select {
+			.card form select,
+			.card form textarea {
 				padding: 0.65rem 0.85rem;
 				border-radius: 0.6rem;
 				border: 1px solid #d7def0;
-				background: #fdfdff;
+				background-color: #fdfdff;
+			}
+
+			.card form select {
+				-webkit-appearance: none;
+				appearance: none;
+				padding-right: 2.5rem;
+				background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%234361ee' d='M1.41.59 6 5.17 10.59.59 12 2l-6 6-6-6z'/%3E%3C/svg%3E");
+				background-repeat: no-repeat;
+				background-position: right 0.85rem center;
+				background-size: 0.65rem;
+			}
+
+			.card form textarea {
+				min-height: 110px;
+				resize: vertical;
 			}
 
 			.alert {
@@ -252,6 +775,23 @@ if ($equipmentResult === false) {
 				background: #fef3c7;
 				border: 1px solid #fde68a;
 				color: #92400e;
+			}
+
+			.alert.error {
+				background: #fee2e2;
+				border-color: #fecaca;
+				color: #991b1b;
+			}
+
+			.alert.success {
+				background: #dcfce7;
+				border-color: #bbf7d0;
+				color: #166534;
+			}
+
+			.alert ul {
+				margin: 0;
+				padding-left: 1.25rem;
 			}
 
 			.empty-state {
@@ -370,14 +910,31 @@ if ($equipmentResult === false) {
 				<article class="card">
 					<h2>Schedule a Machine</h2>
 					<p>Pick the equipment, date, and duration you need.</p>
-					<form>
+					<form method="post">
+						<input type="hidden" name="form_type" value="submit_booking" />
+						<?php foreach ($bookingMessages['success'] as $message): ?>
+							<div class="alert success" role="status">
+								<?php echo htmlspecialchars($message, ENT_QUOTES); ?>
+							</div>
+						<?php endforeach; ?>
+						<?php if (!empty($bookingMessages['error'])): ?>
+							<div class="alert error" role="alert">
+								<ul>
+									<?php foreach ($bookingMessages['error'] as $error): ?>
+										<li><?php echo htmlspecialchars($error, ENT_QUOTES); ?></li>
+									<?php endforeach; ?>
+								</ul>
+							</div>
+						<?php endif; ?>
 						<label>
 							<span>Machine</span>
-							<select name="machine_id">
+							<select name="machine_id" required>
 								<?php if (!empty($equipment)): ?>
-									<option value="">Select a machine</option>
+									<option value="" <?php echo $formValues['machine_id'] === '' ? 'selected' : ''; ?>>Select a machine</option>
 									<?php foreach ($equipment as $machine): ?>
-										<option value="<?php echo htmlspecialchars((string)($machine['id'] ?? $machine['name']), ENT_QUOTES); ?>">
+										<?php if (!isset($machine['id']) || $machine['id'] === null) { continue; } ?>
+										<?php $machineIdValue = (string) $machine['id']; ?>
+										<option value="<?php echo htmlspecialchars($machineIdValue, ENT_QUOTES); ?>" <?php echo $formValues['machine_id'] === $machineIdValue ? 'selected' : ''; ?>>
 											<?php echo htmlspecialchars($machine['name'], ENT_QUOTES); ?>
 										</option>
 									<?php endforeach; ?>
@@ -388,34 +945,92 @@ if ($equipmentResult === false) {
 						</label>
 						<label>
 							<span>Date</span>
-							<input type="date" />
+							<input type="date" name="booking_date" value="<?php echo htmlspecialchars($formValues['date'], ENT_QUOTES); ?>" required />
 						</label>
 						<label>
 							<span>Time</span>
-							<input type="time" />
+							<input type="time" name="booking_time" value="<?php echo htmlspecialchars($formValues['time'], ENT_QUOTES); ?>" required />
 						</label>
 						<label>
 							<span>Duration</span>
-							<select>
-								<option>30 minutes</option>
-								<option>1 hour</option>
-								<option>2 hours</option>
+							<select name="booking_duration" required>
+								<?php foreach ($durationOptions as $value => $label): ?>
+									<option value="<?php echo htmlspecialchars($value, ENT_QUOTES); ?>" <?php echo $formValues['duration'] === (string) $value ? 'selected' : ''; ?>>
+										<?php echo htmlspecialchars($label, ENT_QUOTES); ?>
+									</option>
+								<?php endforeach; ?>
 							</select>
 						</label>
-						<button type="button" class="primary">Submit Booking</button>
+						<label>
+							<span>Notes (optional)</span>
+							<textarea
+								name="booking_notes"
+								placeholder="Share special requirements, safety context, or handover instructions."><?php echo htmlspecialchars($formValues['notes'], ENT_QUOTES); ?></textarea>
+						</label>
+						<button type="submit" class="primary">Submit Booking</button>
 					</form>
 				</article>
 				<article class="card">
-					<h2>Available Machines</h2>
-					<p>Live list sourced from the equipment table.</p>
-					<?php if (!empty($equipment)): ?>
-						<ul>
-							<?php foreach ($equipment as $machine): ?>
-								<li><?php echo htmlspecialchars($machine['name'], ENT_QUOTES); ?></li>
-							<?php endforeach; ?>
-						</ul>
+					<h2>Your Bookings</h2>
+					<p>Manage your upcoming reservations and cancel slots you no longer need.</p>
+					<?php foreach ($cancelMessages['success'] as $message): ?>
+						<div class="alert success" role="status"><?php echo htmlspecialchars($message, ENT_QUOTES); ?></div>
+					<?php endforeach; ?>
+					<?php foreach ($cancelMessages['error'] as $message): ?>
+						<div class="alert error" role="alert"><?php echo htmlspecialchars($message, ENT_QUOTES); ?></div>
+					<?php endforeach; ?>
+					<?php if ($currentUserId === null): ?>
+						<p class="empty-state">Sign in to view and manage your bookings.</p>
+					<?php elseif (empty($userBookings)): ?>
+						<p class="empty-state">You have no bookings yet.</p>
 					<?php else: ?>
-						<p class="empty-state">No machines available yet.</p>
+						<div class="table-wrapper compact">
+							<table class="data-table">
+								<thead>
+									<tr>
+										<th>Machine</th>
+										<th>Schedule</th>
+										<th>Status</th>
+										<th></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php foreach ($userBookings as $booking): ?>
+										<?php
+											$status = strtolower((string) $booking['status']);
+											$statusLabel = ucfirst($status);
+											$statusClass = 'status-' . $status;
+											$rejectionReason = trim((string) ($booking['rejection_reason'] ?? ''));
+										?>
+										<tr>
+											<td><?php echo htmlspecialchars($booking['equipment_name'], ENT_QUOTES); ?></td>
+											<td>
+												<?php echo htmlspecialchars(date('M j, Y g:i A', strtotime($booking['start_time'])) . ' - ' . date('g:i A', strtotime($booking['end_time'])), ENT_QUOTES); ?>
+											</td>
+											<td>
+												<span class="status-badge <?php echo htmlspecialchars($statusClass, ENT_QUOTES); ?>"><?php echo htmlspecialchars($statusLabel, ENT_QUOTES); ?></span>
+												<?php if ($status === 'rejected'): ?>
+													<span class="rejection-reason">
+														Reason: <?php echo htmlspecialchars($rejectionReason !== '' ? $rejectionReason : 'Not provided by manager', ENT_QUOTES); ?>
+													</span>
+												<?php endif; ?>
+											</td>
+											<td class="table-actions">
+												<?php if (in_array($status, ['pending', 'approved'], true)): ?>
+													<form method="post">
+														<input type="hidden" name="form_type" value="cancel_booking" />
+														<input type="hidden" name="booking_id" value="<?php echo (int) $booking['booking_id']; ?>" />
+														<button type="submit" class="ghost danger">Cancel</button>
+													</form>
+												<?php else: ?>
+													<span class="muted-text">—</span>
+												<?php endif; ?>
+											</td>
+										</tr>
+									<?php endforeach; ?>
+								</tbody>
+							</table>
+						</div>
 					<?php endif; ?>
 				</article>
 				<article class="card">
