@@ -1,9 +1,17 @@
 <?php
-if (session_status() !== PHP_SESSION_ACTIVE) {
-	session_start();
-}
+declare(strict_types=1);
 
+require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
+
+$currentUser = require_login(['manager', 'admin']);
+$userFullName = trim((string) ($currentUser['full_name'] ?? ''));
+if ($userFullName === '') {
+	$userFullName = 'Guest User';
+}
+$roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
+$logoutToken = generate_csrf_token('logout_form');
+$decisionCsrfToken = '';
 
 $pageTitle = 'Approve Booking Requests';
 $decisionFeedback = '';
@@ -159,7 +167,7 @@ if (!function_exists('promote_waitlist_entry')) {
 	}
 }
 
-$currentUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+$currentUserId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : null;
 $approverIdParam = $currentUserId ?? 0;
 
 if (
@@ -167,7 +175,10 @@ if (
 	&& ($_POST['form_context'] ?? '') === 'direct-booking'
 	&& isset($_POST['booking_action'], $_POST['booking_id'])
 ) {
-	if (!isset($conn) || !($conn instanceof mysqli)) {
+	if (!validate_csrf_token('booking_decision_form', $_POST['csrf_token'] ?? null)) {
+		$decisionFeedback = 'Unable to verify that request. Please refresh and try again.';
+		$decisionFeedbackType = 'error';
+	} elseif (!isset($conn) || !($conn instanceof mysqli)) {
 		$decisionFeedback = 'Cannot update booking because the database connection is unavailable.';
 		$decisionFeedbackType = 'error';
 	} else {
@@ -268,6 +279,7 @@ if (
 	}
 }
 
+$decisionCsrfToken = generate_csrf_token('booking_decision_form');
 $pendingBookings = [];
 $pendingBookingsError = '';
 
@@ -451,6 +463,75 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 				width: 20px;
 				height: 20px;
 				fill: var(--accent);
+			}
+
+			.profile-menu {
+				position: relative;
+			}
+
+			.profile-menu summary {
+				list-style: none;
+				cursor: pointer;
+			}
+
+			.profile-menu summary::-webkit-details-marker {
+				display: none;
+			}
+
+			.profile-dropdown {
+				position: absolute;
+				top: calc(100% + 0.5rem);
+				right: 0;
+				min-width: 210px;
+				background: var(--surface);
+				border: 1px solid #e2e8f0;
+				border-radius: 0.9rem;
+				box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
+				padding: 1rem;
+				opacity: 0;
+				transform: translateY(-6px);
+				pointer-events: none;
+				transition: opacity 0.2s ease, transform 0.2s ease;
+				z-index: 20;
+			}
+
+			.profile-menu[open] .profile-dropdown {
+				opacity: 1;
+				transform: translateY(0);
+				pointer-events: auto;
+			}
+
+			.profile-name {
+				margin: 0;
+				font-weight: 600;
+			}
+
+			.profile-role {
+				margin: 0.15rem 0 0.75rem;
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+
+			.logout-form {
+				margin: 0;
+			}
+
+			.logout-form button {
+				width: 100%;
+				border: none;
+				border-radius: 0.75rem;
+				padding: 0.65rem 1rem;
+				font-size: 0.95rem;
+				font-weight: 600;
+				color: #fff;
+				background: var(--accent);
+				cursor: pointer;
+				transition: transform 0.2s ease, box-shadow 0.2s ease;
+			}
+
+			.logout-form button:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 10px 20px rgba(16, 185, 129, 0.25);
 			}
 
 			main {
@@ -707,11 +788,22 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 							<path d="M12 3a6 6 0 0 0-6 6v3.6l-1.6 2.7A1 1 0 0 0 5.3 17H18.7a1 1 0 0 0 .9-1.7L18 12.6V9a6 6 0 0 0-6-6zm0 19a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3z" />
 						</svg>
 					</button>
-					<button class="icon-button" aria-label="Profile">
-						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-hidden="true">
-							<path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-3.3 0-9 1.7-9 5v2h18v-2c0-3.3-5.7-5-9-5z" />
-						</svg>
-					</button>
+					<details class="profile-menu">
+						<summary class="icon-button" aria-label="Profile menu" role="button">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-hidden="true">
+								<path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-3.3 0-9 1.7-9 5v2h18v-2c0-3.3-5.7-5-9-5z" />
+							</svg>
+						</summary>
+						<div class="profile-dropdown">
+							<p class="profile-name"><?php echo h($userFullName); ?></p>
+							<p class="profile-role"><?php echo h($roleDisplay); ?></p>
+							<form class="logout-form" method="post" action="logout.php">
+								<input type="hidden" name="csrf_token" value="<?php echo h($logoutToken); ?>" />
+								<input type="hidden" name="redirect_to" value="login.php" />
+								<button type="submit">Log Out</button>
+							</form>
+						</div>
+					</details>
 				</div>
 			</div>
 		</header>
@@ -771,6 +863,7 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 										<td>
 											<form class="decision-form" method="post" action="">
 												<input type="hidden" name="form_context" value="direct-booking" />
+												<input type="hidden" name="csrf_token" value="<?php echo h($decisionCsrfToken); ?>" />
 												<input type="hidden" name="booking_id" value="<?php echo (int) $booking['booking_id']; ?>" />
 												<input type="text" name="rejection_reason" placeholder="Reason if rejecting" />
 												<div class="button-row">

@@ -1,0 +1,32 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/session.php';
+require_once __DIR__ . '/db.php';
+
+$redirectTarget = sanitize_redirect_target($_POST['redirect_to'] ?? $_GET['redirect'] ?? '') ?: 'login.php';
+$csrfToken = $_POST['csrf_token'] ?? null;
+$logoutMessage = 'You have been signed out.';
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !validate_csrf_token('logout_form', $csrfToken)) {
+	$logoutMessage = 'We could not verify your logout request.';
+	$_SESSION['auth_notice'] = $logoutMessage;
+	header('Location: ' . $redirectTarget);
+	exit;
+}
+
+$actorId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+$entityId = $actorId;
+$details = [
+	'event' => 'logout',
+	'admin_number' => $_SESSION['admin_number'] ?? null,
+];
+if (isset($conn) && $conn instanceof mysqli) {
+	log_audit_event($conn, $actorId, 'logout', 'authentication', $entityId, $details);
+}
+
+reset_session_state();
+$_SESSION['auth_notice'] = $logoutMessage;
+
+header('Location: ' . $redirectTarget);
+exit;

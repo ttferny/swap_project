@@ -1,11 +1,17 @@
 <?php
-if (session_status() !== PHP_SESSION_ACTIVE) {
-	session_start();
-}
+declare(strict_types=1);
 
+require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+$currentUser = require_login();
+$userFullName = trim((string) ($currentUser['full_name'] ?? ''));
+if ($userFullName === '') {
+	$userFullName = 'Guest User';
+}
+$roleDisplay = trim((string) ($currentUser['role_name'] ?? 'User'));
+$logoutToken = generate_csrf_token('logout_form');
+$currentUserId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : null;
 $bookingMessages = [
 	'success' => [],
 	'error' => [],
@@ -303,22 +309,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	}
 }
 
+$bookingCsrfToken = generate_csrf_token('book_machine_submit');
+$cancelCsrfToken = generate_csrf_token('book_machine_cancel');
+
 $userBookings = [];
+$userBookingsError = null;
+$availabilityCalendar = [];
+$availabilityCalendarError = null;
+$maintenanceMachines = [];
+$maintenanceMachinesError = null;
 if ($currentUserId !== null) {
 	$userBookingsSql = 'SELECT b.booking_id, b.start_time, b.end_time, b.status, b.rejection_reason, e.name AS equipment_name FROM bookings b INNER JOIN equipment e ON e.equipment_id = b.equipment_id WHERE b.requester_id = ? ORDER BY b.start_time ASC';
 	$userBookingsStmt = mysqli_prepare($conn, $userBookingsSql);
-	if ($userBookingsStmt) {
+	if ($userBookingsStmt === false) {
+		$userBookingsError = 'Unable to prepare the bookings query.';
+	} else {
 		mysqli_stmt_bind_param($userBookingsStmt, 'i', $currentUserId);
-		mysqli_stmt_execute($userBookingsStmt);
-		$result = mysqli_stmt_get_result($userBookingsStmt);
-		if ($result) {
-			while ($row = mysqli_fetch_assoc($result)) {
-				$userBookings[] = $row;
+		if (!mysqli_stmt_execute($userBookingsStmt)) {
+			$userBookingsError = 'Unable to load your bookings right now.';
+		} else {
+			mysqli_stmt_bind_result(
+				$userBookingsStmt,
+				$bookingId,
+				$startTime,
+				$endTime,
+				$status,
+				$rejectionReason,
+				$equipmentName
+			);
+			while (mysqli_stmt_fetch($userBookingsStmt)) {
+				$userBookings[] = [
+					'booking_id' => $bookingId,
+					'start_time' => $startTime,
+					'end_time' => $endTime,
+					'status' => $status,
+					'rejection_reason' => $rejectionReason,
+					'equipment_name' => $equipmentName,
+				];
 			}
-			mysqli_free_result($result);
 		}
 		mysqli_stmt_close($userBookingsStmt);
 	}
+}
+
+$calendarSql = "SELECT b.start_time, b.end_time, e.name AS equipment_name
+	FROM bookings b
+	INNER JOIN equipment e ON e.equipment_id = b.equipment_id
+	WHERE b.status IN ('pending', 'approved')
+	ORDER BY b.start_time ASC";
+$calendarResult = mysqli_query($conn, $calendarSql);
+if ($calendarResult === false) {
+	$availabilityCalendarError = 'Unable to load the availability calendar right now.';
+} else {
+	while ($row = mysqli_fetch_assoc($calendarResult)) {
+		$startTime = (string) ($row['start_time'] ?? '');
+		$endTime = (string) ($row['end_time'] ?? '');
+		$equipmentName = trim((string) ($row['equipment_name'] ?? ''));
+		if ($startTime === '' || $endTime === '') {
+			continue;
+		}
+		$dateKey = date('Y-m-d', strtotime($startTime));
+		if (!isset($availabilityCalendar[$dateKey])) {
+			$availabilityCalendar[$dateKey] = [];
+		}
+		$availabilityCalendar[$dateKey][] = [
+			'equipment_name' => $equipmentName !== '' ? $equipmentName : 'Unnamed equipment',
+			'start_time' => $startTime,
+			'end_time' => $endTime,
+		];
+	}
+	mysqli_free_result($calendarResult);
+}
+
+$maintenanceSql = "SELECT DISTINCT e.name AS equipment_name
+	FROM maintenance_tasks mt
+	INNER JOIN equipment e ON e.equipment_id = mt.equipment_id
+	WHERE mt.status = 'in_progress'
+	ORDER BY e.name ASC";
+$maintenanceResult = mysqli_query($conn, $maintenanceSql);
+if ($maintenanceResult === false) {
+	$maintenanceMachinesError = 'Unable to load maintenance status right now.';
+} else {
+	while ($row = mysqli_fetch_assoc($maintenanceResult)) {
+		$equipmentName = trim((string) ($row['equipment_name'] ?? ''));
+		if ($equipmentName === '') {
+			$equipmentName = 'Unnamed equipment';
+		}
+		$maintenanceMachines[] = $equipmentName;
+	}
+	mysqli_free_result($maintenanceResult);
 }
 
 function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = null): void
@@ -912,6 +991,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 					<p>Pick the equipment, date, and duration you need.</p>
 					<form method="post">
 						<input type="hidden" name="form_type" value="submit_booking" />
+						<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($bookingCsrfToken, ENT_QUOTES); ?>" />
 						<?php foreach ($bookingMessages['success'] as $message): ?>
 							<div class="alert success" role="status">
 								<?php echo htmlspecialchars($message, ENT_QUOTES); ?>
@@ -955,8 +1035,8 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 							<span>Duration</span>
 							<select name="booking_duration" required>
 								<?php foreach ($durationOptions as $value => $label): ?>
-									<option value="<?php echo htmlspecialchars($value, ENT_QUOTES); ?>" <?php echo $formValues['duration'] === (string) $value ? 'selected' : ''; ?>>
-										<?php echo htmlspecialchars($label, ENT_QUOTES); ?>
+									<option value="<?php echo htmlspecialchars((string) $value, ENT_QUOTES); ?>" <?php echo $formValues['duration'] === (string) $value ? 'selected' : ''; ?>>
+										<?php echo htmlspecialchars((string) $label, ENT_QUOTES); ?>
 									</option>
 								<?php endforeach; ?>
 							</select>
@@ -973,6 +1053,9 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 				<article class="card">
 					<h2>Your Bookings</h2>
 					<p>Manage your upcoming reservations and cancel slots you no longer need.</p>
+					<?php if ($userBookingsError !== null): ?>
+						<div class="alert error" role="alert"><?php echo htmlspecialchars($userBookingsError, ENT_QUOTES); ?></div>
+					<?php endif; ?>
 					<?php foreach ($cancelMessages['success'] as $message): ?>
 						<div class="alert success" role="status"><?php echo htmlspecialchars($message, ENT_QUOTES); ?></div>
 					<?php endforeach; ?>
@@ -1020,6 +1103,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 													<form method="post">
 														<input type="hidden" name="form_type" value="cancel_booking" />
 														<input type="hidden" name="booking_id" value="<?php echo (int) $booking['booking_id']; ?>" />
+														<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($cancelCsrfToken, ENT_QUOTES); ?>" />
 														<button type="submit" class="ghost danger">Cancel</button>
 													</form>
 												<?php else: ?>
@@ -1035,50 +1119,45 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 				</article>
 				<article class="card">
 					<h2>Availability Calendar</h2>
-					<p>See open slots by day and track machines under maintenance.</p>
-					<div class="calendar-grid">
-						<div class="calendar-day">
-							<h3>Mon</h3>
-							<ul>
-								<li>3D Printer — 10:00-12:00</li>
-								<li>CNC Mill — 14:00-16:00</li>
-							</ul>
+					<p>Unavailable machines</p>
+					<?php if ($availabilityCalendarError !== null): ?>
+						<p class="empty-state" role="alert"><?php echo htmlspecialchars($availabilityCalendarError, ENT_QUOTES); ?></p>
+					<?php elseif (empty($availabilityCalendar)): ?>
+						<p class="empty-state">No upcoming bookings found yet.</p>
+					<?php else: ?>
+						<div class="calendar-grid">
+							<?php foreach ($availabilityCalendar as $dateKey => $entries): ?>
+								<?php $dateLabel = date('D, M j', strtotime($dateKey)); ?>
+								<div class="calendar-day">
+									<h3><?php echo htmlspecialchars($dateLabel, ENT_QUOTES); ?></h3>
+									<ul>
+										<?php foreach ($entries as $entry): ?>
+											<li>
+												<?php
+													$startLabel = date('g:i A', strtotime($entry['start_time']));
+													$endLabel = date('g:i A', strtotime($entry['end_time']));
+												?>
+												<?php echo htmlspecialchars($entry['equipment_name'], ENT_QUOTES); ?> — <?php echo htmlspecialchars($startLabel . ' - ' . $endLabel, ENT_QUOTES); ?>
+											</li>
+										<?php endforeach; ?>
+									</ul>
+								</div>
+							<?php endforeach; ?>
 						</div>
-						<div class="calendar-day">
-							<h3>Tue</h3>
-							<ul>
-								<li>Laser Cutter — 08:00-09:00</li>
-								<li>3D Printer — 15:00-17:00</li>
-							</ul>
-						</div>
-						<div class="calendar-day">
-							<h3>Wed</h3>
-							<ul>
-								<li>CNC Mill — 09:30-11:00</li>
-								<li>Laser Cutter — 13:00-14:30</li>
-							</ul>
-						</div>
-						<div class="calendar-day">
-							<h3>Thu</h3>
-							<ul>
-								<li>3D Printer — 11:00-12:30</li>
-								<li>CNC Mill — 16:00-18:00</li>
-							</ul>
-						</div>
-						<div class="calendar-day">
-							<h3>Fri</h3>
-							<ul>
-								<li>Laser Cutter — 09:00-10:30</li>
-								<li>3D Printer — 14:00-15:00</li>
-							</ul>
-						</div>
-					</div>
+					<?php endif; ?>
 					<div class="maintenance-list">
 						<h3>Machines in Maintenance</h3>
-						<ul>
-							<li>Laser Cutter — Safety recalibration (through Jan 20)</li>
-							<li>CNC Mill — Spindle replacement (Jan 25-26)</li>
-						</ul>
+						<?php if ($maintenanceMachinesError !== null): ?>
+							<p class="empty-state" role="alert"><?php echo htmlspecialchars($maintenanceMachinesError, ENT_QUOTES); ?></p>
+						<?php elseif (empty($maintenanceMachines)): ?>
+							<p class="empty-state">No machines currently in progress.</p>
+						<?php else: ?>
+							<ul>
+								<?php foreach ($maintenanceMachines as $machineName): ?>
+									<li><?php echo htmlspecialchars($machineName, ENT_QUOTES); ?></li>
+								<?php endforeach; ?>
+							</ul>
+						<?php endif; ?>
 					</div>
 				</article>
 			</section>

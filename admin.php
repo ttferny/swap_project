@@ -1,13 +1,16 @@
 <?php
-if (session_status() !== PHP_SESSION_ACTIVE) {
-	session_start();
-}
+declare(strict_types=1);
+
+require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$userFullName = trim((string) ($_SESSION['full_name'] ?? ''));
+$currentUser = require_login(['admin']);
+$userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
 }
+$roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
+$logoutToken = generate_csrf_token('logout_form');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -117,6 +120,75 @@ if ($userFullName === '') {
 				width: 20px;
 				height: 20px;
 				fill: var(--accent);
+			}
+
+			.profile-menu {
+				position: relative;
+			}
+
+			.profile-menu summary {
+				list-style: none;
+				cursor: pointer;
+			}
+
+			.profile-menu summary::-webkit-details-marker {
+				display: none;
+			}
+
+			.profile-dropdown {
+				position: absolute;
+				top: calc(100% + 0.5rem);
+				right: 0;
+				min-width: 200px;
+				background: var(--card);
+				border: 1px solid #e2e8f0;
+				border-radius: 0.9rem;
+				box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
+				padding: 1rem;
+				opacity: 0;
+				transform: translateY(-6px);
+				pointer-events: none;
+				transition: opacity 0.2s ease, transform 0.2s ease;
+				z-index: 15;
+			}
+
+			.profile-menu[open] .profile-dropdown {
+				opacity: 1;
+				transform: translateY(0);
+				pointer-events: auto;
+			}
+
+			.profile-name {
+				margin: 0;
+				font-weight: 600;
+			}
+
+			.profile-role {
+				margin: 0.15rem 0 0.75rem;
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+
+			.logout-form {
+				margin: 0;
+			}
+
+			.logout-form button {
+				width: 100%;
+				border: none;
+				border-radius: 0.75rem;
+				padding: 0.65rem 1rem;
+				font-size: 0.95rem;
+				font-weight: 600;
+				color: #fff;
+				background: var(--accent);
+				cursor: pointer;
+				transition: transform 0.2s ease, box-shadow 0.2s ease;
+			}
+
+			.logout-form button:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 10px 20px rgba(67, 97, 238, 0.25);
 			}
 
 			main {
@@ -240,18 +312,29 @@ if ($userFullName === '') {
 							/>
 						</svg>
 					</button>
-					<button class="icon-button" aria-label="Profile">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 24 24"
-							role="img"
-							aria-hidden="true"
-						>
-							<path
-								d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-3.3 0-9 1.7-9 5v2h18v-2c0-3.3-5.7-5-9-5z"
-							/>
-						</svg>
-					</button>
+					<details class="profile-menu">
+						<summary class="icon-button" aria-label="Profile menu" role="button">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								role="img"
+								aria-hidden="true"
+							>
+								<path
+									d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-3.3 0-9 1.7-9 5v2h18v-2c0-3.3-5.7-5-9-5z"
+								/>
+							</svg>
+						</summary>
+						<div class="profile-dropdown">
+							<p class="profile-name"><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></p>
+							<p class="profile-role"><?php echo htmlspecialchars($roleDisplay, ENT_QUOTES); ?></p>
+							<form class="logout-form" method="post" action="logout.php">
+								<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($logoutToken, ENT_QUOTES); ?>" />
+								<input type="hidden" name="redirect_to" value="login.php" />
+								<button type="submit">Log Out</button>
+							</form>
+						</div>
+					</details>
 				</div>
 			</div>
 		</header>

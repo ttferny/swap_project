@@ -1,9 +1,12 @@
 <?php
-session_start();
+declare(strict_types=1);
+
+require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
 $adminNumber = '';
 $errors = [];
+$infoMessages = [];
 
 $roleDestinations = [
 	'admin' => 'admin.php',
@@ -12,7 +15,45 @@ $roleDestinations = [
 	'user' => 'index.php',
 ];
 
+$redirectTarget = sanitize_redirect_target($_POST['redirect_to'] ?? $_GET['redirect'] ?? '');
+if (is_authenticated()) {
+	$alreadyDestination = $redirectTarget;
+	if ($alreadyDestination === '') {
+		$sessionUser = current_user();
+		$roleKey = strtolower(trim((string) ($sessionUser['role_name'] ?? '')));
+		$alreadyDestination = $roleDestinations[$roleKey] ?? 'index.php';
+	}
+	redirect_if_authenticated($alreadyDestination);
+}
+
+if (isset($_SESSION['auth_notice'])) {
+	$notice = trim((string) $_SESSION['auth_notice']);
+	if ($notice !== '') {
+		$infoMessages[] = $notice;
+	}
+	unset($_SESSION['auth_notice']);
+}
+
+$throttleKey = 'login_throttle';
+$maxAttempts = 3;
+$lockSeconds = 300;
+$throttleState = $_SESSION[$throttleKey] ?? ['attempts' => 0, 'locked_until' => 0];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+	$now = time();
+	$lockedUntil = (int) ($throttleState['locked_until'] ?? 0);
+	$loginSuccessful = false;
+	$attemptedAuth = false;
+
+	if (!validate_csrf_token('login_form', $_POST['csrf_token'] ?? null)) {
+		$errors[] = 'Your login session expired. Please refresh and try again.';
+	}
+
+	if ($lockedUntil > $now) {
+		$waitSeconds = max(1, $lockedUntil - $now);
+		$errors[] = 'Too many attempts. Please wait ' . ceil($waitSeconds / 60) . ' minute(s) before trying again.';
+	}
+
 	$adminNumber = trim($_POST['admin_number'] ?? '');
 	$password = $_POST['password'] ?? '';
 
@@ -25,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	}
 
 	if (empty($errors)) {
+		$attemptedAuth = true;
 		$sql = 'SELECT u.user_id, u.role_id, u.tp_admin_no, u.password_hash, u.full_name, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.tp_admin_no = ? LIMIT 1';
 		$stmt = mysqli_prepare($conn, $sql);
 		if ($stmt === false) {
@@ -36,63 +78,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$user = $result ? mysqli_fetch_assoc($result) : null;
 			mysqli_stmt_close($stmt);
 
-			if ($user && password_verify($password, $user['password_hash'])) {
+			if ($user && password_verify($password, (string) $user['password_hash'])) {
+				$loginSuccessful = true;
+				if (password_needs_rehash((string) $user['password_hash'], PASSWORD_DEFAULT)) {
+					$newHash = password_hash($password, PASSWORD_DEFAULT);
+					if ($newHash !== false) {
+						$rehashStmt = mysqli_prepare($conn, 'UPDATE users SET password_hash = ? WHERE user_id = ?');
+						if ($rehashStmt) {
+							mysqli_stmt_bind_param($rehashStmt, 'si', $newHash, $user['user_id']);
+							mysqli_stmt_execute($rehashStmt);
+							mysqli_stmt_close($rehashStmt);
+						}
+					}
+				}
+
+				refresh_session_id(true);
 				$_SESSION['user_id'] = $user['user_id'];
 				$_SESSION['admin_number'] = $user['tp_admin_no'];
 				$_SESSION['role_id'] = $user['role_id'];
 				$_SESSION['role_name'] = $user['role_name'];
 				$_SESSION['full_name'] = $user['full_name'];
+				unset($_SESSION[$throttleKey]);
 
 				$roleKey = strtolower(trim($user['role_name'] ?? ''));
-				$destination = null;
-
-				if ($roleKey !== '' && isset($roleDestinations[$roleKey])) {
-					$destination = $roleDestinations[$roleKey];
-				}
-
-				if ($destination === null) {
-					$destination = 'index.php';
-				}
+				$destination = $redirectTarget !== '' ? $redirectTarget : ($roleDestinations[$roleKey] ?? 'index.php');
 
 				$actorId = (int) $user['user_id'];
 				$entityId = $actorId;
-				$action = 'login';
-				$entityType = 'authentication';
-				$ipAddress = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-				$userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'unknown';
 				$detailsPayload = [
 					'event' => 'login',
 					'admin_number' => $user['tp_admin_no'],
 					'role' => $user['role_name'],
 				];
-				$details = json_encode($detailsPayload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-				if ($details === false) {
-					$details = '{"event":"login"}';
-				}
-
-				$logStmt = mysqli_prepare(
-					$conn,
-					'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, ip_address, user_agent, details) VALUES (?, ?, ?, ?, ?, ?, ?)'
-				);
-				if ($logStmt) {
-					mysqli_stmt_bind_param(
-						$logStmt,
-						'ississs',
-						$actorId,
-						$action,
-						$entityType,
-						$entityId,
-						$ipAddress,
-						$userAgent,
-						$details
-					);
-					if (!mysqli_stmt_execute($logStmt)) {
-						error_log('Audit log execute failed: ' . mysqli_stmt_error($logStmt));
-					}
-					mysqli_stmt_close($logStmt);
-				} else {
-					error_log('Audit log prepare failed: ' . mysqli_error($conn));
-				}
+				log_audit_event($conn, $actorId, 'login', 'authentication', $entityId, $detailsPayload);
 
 				header('Location: ' . $destination);
 				exit;
@@ -101,7 +119,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$errors[] = 'Invalid admin number or password.';
 		}
 	}
+
+	if (!$loginSuccessful && $attemptedAuth) {
+		$throttleState['attempts'] = (int) ($throttleState['attempts'] ?? 0) + 1;
+		if ($throttleState['attempts'] >= $maxAttempts) {
+			$throttleState['locked_until'] = $now + $lockSeconds;
+			$throttleState['attempts'] = 0;
+			log_audit_event(
+				$conn,
+				null,
+				'login_lockout',
+				'authentication',
+				null,
+				[
+					'admin_number' => $adminNumber,
+					'attempts' => $maxAttempts,
+					'lock_seconds' => $lockSeconds,
+				]
+			);
+		}
+		$_SESSION[$throttleKey] = $throttleState;
+		try {
+			usleep(random_int(150000, 400000));
+		} catch (Exception $exception) {
+			usleep(200000);
+		}
+	}
 }
+
+$csrfToken = generate_csrf_token('login_form');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -209,12 +255,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				color: #991b1b;
 				list-style: disc inside;
 			}
+
+			.info-list {
+				margin: 0;
+				margin-bottom: 1rem;
+				padding: 0.85rem 1rem;
+				border-radius: 0.9rem;
+				background: #dcfce7;
+				border: 1px solid #86efac;
+				color: #166534;
+				list-style: disc inside;
+			}
 		</style>
 	</head>
 	<body>
 		<main class="card">
 			<h1>Login</h1>
 			<p>Enter your admin number and password to access the dashboard.</p>
+			<?php if (!empty($infoMessages)): ?>
+				<ul class="info-list">
+					<?php foreach ($infoMessages as $message): ?>
+						<li><?php echo htmlspecialchars($message, ENT_QUOTES); ?></li>
+					<?php endforeach; ?>
+				</ul>
+			<?php endif; ?>
 			<?php if (!empty($errors)): ?>
 				<ul class="error-list">
 					<?php foreach ($errors as $error): ?>
@@ -223,6 +287,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				</ul>
 			<?php endif; ?>
 			<form method="post" novalidate>
+				<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES); ?>" />
+				<input type="hidden" name="redirect_to" value="<?php echo htmlspecialchars($redirectTarget, ENT_QUOTES); ?>" />
 				<label>
 					<span>Admin Number</span>
 					<input

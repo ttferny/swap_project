@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jan 20, 2026 at 12:33 PM
+-- Generation Time: Jan 28, 2026 at 06:39 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.1.25
 
@@ -39,6 +39,99 @@ CREATE TABLE `audit_logs` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `audit_logs`
+--
+
+INSERT INTO `audit_logs` (`audit_id`, `actor_user_id`, `action`, `entity_type`, `entity_id`, `ip_address`, `user_agent`, `details`, `created_at`) VALUES
+(97, 8, 'login', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567A\",\"role\":\"Admin\"}', '2026-01-27 12:25:20'),
+(98, 8, 'logout', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567A\"}', '2026-01-27 12:25:25'),
+(99, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 12:25:40'),
+(100, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 12:25:43'),
+(101, NULL, 'login_lockout', 'authentication', NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"admin_number\":\"1234567C\",\"attempts\":3,\"lock_seconds\":300}', '2026-01-27 12:25:54'),
+(102, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 12:35:42'),
+(103, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 12:35:57'),
+(104, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 12:36:06'),
+(105, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 12:36:43'),
+(106, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 12:38:20'),
+(107, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 12:39:34'),
+(108, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:39:49'),
+(109, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:48:57'),
+(110, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:49:06'),
+(111, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:53:41'),
+(112, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:53:47'),
+(113, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:54:09'),
+(114, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:54:14'),
+(115, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:55:52'),
+(116, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:55:57'),
+(117, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 13:04:49'),
+(118, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 13:04:54'),
+(119, 10, 'equipment_status_updated', 'equipment', 21, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"new_status\":\"maintenance\"}', '2026-01-27 13:05:14'),
+(120, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 13:05:19'),
+(121, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 13:06:06'),
+(122, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 14:11:51'),
+(123, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 14:27:08'),
+(124, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 14:27:13'),
+(125, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 14:27:25'),
+(126, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 14:27:31'),
+(127, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 14:43:08'),
+(128, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 14:43:14'),
+(129, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 15:01:46'),
+(130, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 15:02:05'),
+(131, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 15:40:09'),
+(132, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 15:40:31'),
+(133, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:06:05'),
+(134, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:06:16'),
+(135, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:17:07'),
+(136, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 16:17:19'),
+(137, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 16:17:28'),
+(138, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 16:20:21'),
+(139, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:35:47'),
+(140, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:37:35'),
+(141, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:38:52'),
+(142, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 16:40:21'),
+(143, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:40:44'),
+(144, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 16:40:55'),
+(145, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:48:55'),
+(146, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:49:01'),
+(147, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:52:10'),
+(148, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:52:23'),
+(149, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:52:43'),
+(150, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:52:50'),
+(151, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:53:05'),
+(152, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 17:18:17'),
+(153, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 17:18:27'),
+(154, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 17:18:32'),
+(155, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 18:29:52'),
+(156, 8, 'login', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567A\",\"role\":\"Admin\"}', '2026-01-27 18:30:00'),
+(157, 8, 'logout', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567A\"}', '2026-01-27 18:30:06'),
+(158, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 18:30:11'),
+(159, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 18:30:17'),
+(160, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 18:30:22'),
+(161, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 18:58:00'),
+(162, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 18:58:18'),
+(163, 11, 'booking_created', 'bookings', 23, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":21,\"purpose\":\"for project work\",\"origin\":\"portal_booking_form\"}', '2026-01-27 19:00:07'),
+(164, 11, 'booking_created', 'bookings', 24, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":24,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-27 19:00:23'),
+(165, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 19:00:58'),
+(166, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:01:08'),
+(167, 13, 'booking_created', 'bookings', 25, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":30,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-27 19:01:25'),
+(168, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 19:01:35'),
+(169, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 19:01:40'),
+(170, 9, 'booking_approved', 'booking', 25, NULL, NULL, '{\"equipment_id\":30,\"requester_id\":13,\"start_time\":\"2026-01-28 07:06:00\",\"end_time\":\"2026-01-28 07:36:00\"}', '2026-01-27 19:01:43'),
+(171, 9, 'booking_approved', 'booking', 24, NULL, NULL, '{\"equipment_id\":24,\"requester_id\":11,\"start_time\":\"2026-01-29 12:03:00\",\"end_time\":\"2026-01-29 13:03:00\"}', '2026-01-27 19:01:44'),
+(172, 9, 'booking_approved', 'booking', 23, NULL, NULL, '{\"equipment_id\":21,\"requester_id\":11,\"start_time\":\"2026-01-30 06:59:00\",\"end_time\":\"2026-01-30 08:29:00\"}', '2026-01-27 19:01:46'),
+(173, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 19:01:48'),
+(174, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 19:01:56'),
+(175, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 19:05:24'),
+(176, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:05:31'),
+(177, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 19:05:45'),
+(178, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:05:52'),
+(179, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 19:12:11'),
+(180, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 19:12:17'),
+(181, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 19:12:30'),
+(182, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:12:35'),
+(183, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 22:42:51');
+
 -- --------------------------------------------------------
 
 --
@@ -63,6 +156,17 @@ CREATE TABLE `bookings` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `bookings`
+--
+
+INSERT INTO `bookings` (`booking_id`, `equipment_id`, `requester_id`, `start_time`, `end_time`, `purpose`, `status`, `requires_approval`, `approved_by`, `approved_at`, `rejection_reason`, `cancelled_at`, `cancelled_by`, `flag_reason`, `created_at`, `updated_at`) VALUES
+(21, 21, 13, '2026-01-01 08:35:00', '2026-01-01 10:05:00', 'meow', 'rejected', 1, 13, '2026-01-21 20:36:06', '', NULL, NULL, NULL, '2026-01-21 20:36:01', '2026-01-21 20:36:06'),
+(22, 21, 13, '2026-01-01 08:35:00', '2026-01-01 10:05:00', 'meow', 'cancelled', 1, NULL, NULL, NULL, '2026-01-21 20:36:15', 13, NULL, '2026-01-21 20:36:09', '2026-01-21 20:36:15'),
+(23, 21, 11, '2026-01-30 06:59:00', '2026-01-30 08:29:00', 'for project work', 'approved', 1, 9, '2026-01-27 19:01:46', NULL, NULL, NULL, NULL, '2026-01-27 19:00:07', '2026-01-27 19:01:46'),
+(24, 24, 11, '2026-01-29 12:03:00', '2026-01-29 13:03:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-27 19:01:44', NULL, NULL, NULL, NULL, '2026-01-27 19:00:23', '2026-01-27 19:01:44'),
+(25, 30, 13, '2026-01-28 07:06:00', '2026-01-28 07:36:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-27 19:01:43', NULL, NULL, NULL, NULL, '2026-01-27 19:01:25', '2026-01-27 19:01:43');
 
 --
 -- Triggers `bookings`
@@ -133,6 +237,30 @@ CREATE TABLE `certifications` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `certifications`
+--
+
+INSERT INTO `certifications` (`cert_id`, `name`, `description`, `valid_days`, `created_at`) VALUES
+(1, 'AMC Safety Induction (Medium/High Risk)', 'Mandatory lab safety induction for operating medium and high risk equipment in TP AMC.', 365, '2026-01-27 19:16:54'),
+(2, 'Machine Risk Assessment & SOP Briefing', 'Completion of machine-specific risk assessment, SOP walkthrough, and hazard controls acknowledgement.', 365, '2026-01-27 19:16:54'),
+(3, 'Lockout/Tagout (LOTO) Awareness', 'Training on isolation of energy sources before setup, cleaning, maintenance, or jam clearing.', 730, '2026-01-27 19:16:54'),
+(4, 'CNC Machining Operator Certification', 'Authorization to operate CNC mills/routers/turning centers including workholding, tooling, offsets, and emergency response.', 365, '2026-01-27 19:16:54'),
+(5, 'CNC Lathe Safety Certification', 'Safe operation of CNC lathe: chuck safety, swarf control, tool changes, and safe measurement procedures.', 365, '2026-01-27 19:16:54'),
+(6, 'Laser Cutter Operator Certification', 'Safe use of laser cutting system: optics safety, fume extraction, fire prevention, and material restrictions.', 365, '2026-01-27 19:16:54'),
+(7, 'Hot Work Permit Training', 'Training for processes involving heat/sparks (welding, grinding, cutting); permit and fire watch requirements.', 365, '2026-01-27 19:16:54'),
+(8, 'Welding Safety & PPE Certification', 'Arc/spot/MIG/TIG welding safety: PPE, UV exposure, ventilation, and safe setup.', 365, '2026-01-27 19:16:54'),
+(9, 'Compressed Gas Cylinder Handling', 'Safe storage, transport, regulator use, leak checks, and emergency response for gas cylinders.', 730, '2026-01-27 19:16:54'),
+(10, 'Chemical Handling & SDS Awareness', 'Understanding of SDS, labeling, spill response, and safe handling of solvents/coolants/resins.', 730, '2026-01-27 19:16:54'),
+(11, 'Respiratory Protection (Mask Fit & Use)', 'Proper selection and use of respirators for fumes/dust; includes fit and user checks.', 365, '2026-01-27 19:16:54'),
+(12, 'Electrical Safety (Basic / Workshop)', 'Electrical hazard awareness, safe isolation practices, and reporting of unsafe conditions.', 730, '2026-01-27 19:16:54'),
+(13, 'Manual Handling & Ergonomics', 'Safe lifting, handling of heavy workpieces/materials, and ergonomics in workshop tasks.', 730, '2026-01-27 19:16:54'),
+(14, 'Fire Safety & Extinguisher Familiarization', 'Fire triangle, extinguisher types, and response for common workshop fire scenarios.', 730, '2026-01-27 19:16:54'),
+(15, 'First Aid Awareness (Workshop)', 'Basic first aid response for cuts, burns, eye exposure; how to escalate and report incidents.', 730, '2026-01-27 19:16:54'),
+(16, 'High-Speed Rotating Equipment Safety', 'Safety for rotating machinery: entanglement hazards, guarding, correct attire, and safe operation.', 365, '2026-01-27 19:16:54'),
+(17, 'Press/Shear/Brake Safety Certification', 'Authorization for press brake/shear machines; pinch-point awareness, guards, and safe loading/unloading.', 365, '2026-01-27 19:16:54'),
+(18, 'Forklift/Pallet Jack Awareness (Facility Only)', 'Basic safe movement in shared workshop areas; right-of-way and load stability awareness.', 365, '2026-01-27 19:16:54');
+
 -- --------------------------------------------------------
 
 --
@@ -161,7 +289,7 @@ CREATE TABLE `equipment` (
 --
 
 INSERT INTO `equipment` (`equipment_id`, `serial_no`, `name`, `category`, `location`, `manufacturer`, `model`, `risk_level`, `current_status`, `status_updated_at`, `status_updated_by`, `notes`, `created_at`, `updated_at`) VALUES
-(21, 'TP-AMC-CNC-001', '3-Axis CNC Milling Machine', 'CNC Machining', 'Lobby', 'HAAS', 'VF-2', 'high', 'operational', '2026-01-19 14:08:38', 8, 'Used for precision machining and student training', '2026-01-19 14:08:38', '2026-01-19 14:08:38'),
+(21, 'TP-AMC-CNC-001', '3-Axis CNC Milling Machine', 'CNC Machining', 'Lobby', 'HAAS', 'VF-2', 'high', 'maintenance', '2026-01-27 13:05:14', 10, 'Used for precision machining and student training', '2026-01-19 14:08:38', '2026-01-27 13:05:14'),
 (22, 'TP-AMC-CNC-002', 'CNC Turning Lathe', 'CNC Machining', 'Lobby', 'DMG MORI', 'CLX 350', 'high', 'operational', '2026-01-19 14:08:38', 8, 'High-speed turning operations', '2026-01-19 14:08:38', '2026-01-19 14:08:38'),
 (23, 'TP-AMC-ROB-001', 'Industrial Robotic Arm', 'Robotics', 'Room 1', 'FANUC', 'M-20iD/25', 'high', 'operational', '2026-01-19 14:08:38', 8, 'Used for automation and pick-and-place demonstrations', '2026-01-19 14:08:38', '2026-01-19 14:08:38'),
 (24, 'TP-AMC-ROB-002', 'Collaborative Robot (Cobot)', 'Robotics', 'Room 1', 'Universal Robots', 'UR5e', 'medium', 'operational', '2026-01-19 14:08:38', 8, 'Safe human-robot collaboration experiments', '2026-01-19 14:08:38', '2026-01-19 14:08:38'),
@@ -182,6 +310,48 @@ CREATE TABLE `equipment_required_certs` (
   `equipment_id` bigint(20) NOT NULL,
   `cert_id` bigint(20) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `equipment_required_certs`
+--
+
+INSERT INTO `equipment_required_certs` (`equipment_id`, `cert_id`) VALUES
+(21, 1),
+(21, 2),
+(21, 3),
+(21, 4),
+(21, 14),
+(21, 16),
+(22, 1),
+(22, 2),
+(22, 3),
+(22, 5),
+(22, 14),
+(22, 16),
+(23, 1),
+(23, 2),
+(23, 3),
+(23, 12),
+(23, 14),
+(24, 1),
+(24, 2),
+(24, 12),
+(25, 1),
+(25, 2),
+(25, 10),
+(25, 11),
+(25, 12),
+(25, 14),
+(27, 1),
+(27, 2),
+(27, 13),
+(29, 1),
+(29, 2),
+(29, 12),
+(30, 1),
+(30, 2),
+(30, 12),
+(30, 14);
 
 -- --------------------------------------------------------
 
@@ -211,6 +381,18 @@ CREATE TABLE `equipment_training_materials` (
   `linked_at` datetime NOT NULL DEFAULT current_timestamp(),
   `linked_by` bigint(20) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `equipment_training_materials`
+--
+
+INSERT INTO `equipment_training_materials` (`equipment_id`, `material_id`, `linked_at`, `linked_by`) VALUES
+(21, 1, '2026-01-27 19:29:22', 8),
+(21, 4, '2026-01-27 22:41:00', 8),
+(22, 2, '2026-01-27 19:29:22', 8),
+(23, 3, '2026-01-27 19:29:22', 8),
+(23, 5, '2026-01-27 22:41:00', 8),
+(25, 6, '2026-01-27 22:41:00', 8);
 
 -- --------------------------------------------------------
 
@@ -265,6 +447,16 @@ CREATE TABLE `maintenance_records` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `maintenance_records`
+--
+
+INSERT INTO `maintenance_records` (`record_id`, `equipment_id`, `task_id`, `downtime_start`, `downtime_end`, `notes`, `logged_by`, `created_at`) VALUES
+(8, 21, 1, '2026-01-28 14:22:57', '2026-01-27 18:55:52', 'Equipment is currently in maintenance. Diagnose root cause, perform service or repairs, then verify with a test run before returning to operational.', 10, '2026-01-27 18:55:52'),
+(9, 23, 3, '2026-02-17 14:22:57', '2026-01-27 18:56:08', 'Inspect joints, cabling and emergency stop, verify safety zones, check end-effector mounting and run diagnostics.', 10, '2026-01-27 18:56:08'),
+(10, 28, 8, '2026-02-26 14:22:57', '2026-01-27 18:56:13', 'Inspect wiring and IO modules, test sample PLC program, verify communications and power stability.', 10, '2026-01-27 18:56:13'),
+(11, 21, 1, '2026-01-28 14:22:57', '2026-01-27 18:57:26', 'Equipment is currently in maintenance. Diagnose root cause, perform service or repairs, then verify with a test run before returning to operational.', 10, '2026-01-27 18:57:26');
+
 -- --------------------------------------------------------
 
 --
@@ -286,6 +478,22 @@ CREATE TABLE `maintenance_tasks` (
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `maintenance_tasks`
+--
+
+INSERT INTO `maintenance_tasks` (`task_id`, `equipment_id`, `title`, `description`, `task_type`, `priority`, `status`, `scheduled_for`, `assigned_to`, `created_by`, `completed_at`, `created_at`, `updated_at`) VALUES
+(1, 21, 'Repair/Service: 3-Axis CNC Milling Machine', 'Equipment is currently in maintenance. Diagnose root cause, perform service or repairs, then verify with a test run before returning to operational.', 'corrective', 'high', 'done', '2026-01-28 14:22:57', 10, 10, '2026-01-27 18:57:26', '2026-01-27 14:22:57', '2026-01-27 18:57:26'),
+(2, 22, 'Preventive Check: CNC Turning Lathe', 'Routine inspection: clean machine, check lubrication, tool alignment, belts and hoses, then run a calibration cut.', 'preventive', 'medium', 'in_progress', '2026-02-10 14:22:57', 10, 10, '2026-01-27 18:28:14', '2026-01-27 14:22:57', '2026-01-27 19:12:23'),
+(3, 23, 'Preventive Check: Industrial Robotic Arm', 'Inspect joints, cabling and emergency stop, verify safety zones, check end-effector mounting and run diagnostics.', 'preventive', 'medium', 'done', '2026-02-17 14:22:57', 10, 10, '2026-01-27 18:56:08', '2026-01-27 14:22:57', '2026-01-27 18:56:08'),
+(4, 24, 'Preventive Check: Collaborative Robot (Cobot)', 'Verify torque sensors, safety limits, firmware version and payload settings. Perform functional test.', 'preventive', 'medium', 'in_progress', '2026-02-17 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 19:12:27'),
+(5, 25, 'Service: Metal 3D Printer', 'Equipment is currently in maintenance. Inspect build plate, filters, material handling and calibration before returning to service.', 'corrective', 'high', 'open', '2026-01-29 14:22:57', 10, 10, '2026-01-27 18:27:30', '2026-01-27 14:22:57', '2026-01-27 18:54:43'),
+(6, 26, 'Preventive Check: FDM 3D Printer', 'Clean nozzle and extruder, check bed leveling, inspect belts and rails, and print a calibration model.', 'preventive', 'low', 'open', '2026-02-26 14:22:57', 10, 10, '2026-01-27 18:28:18', '2026-01-27 14:22:57', '2026-01-27 18:54:50'),
+(7, 27, 'Preventive Calibration: CMM', 'Inspect probe, clean granite surface, verify environmental conditions, and run full calibration routine.', 'preventive', 'high', 'cancelled', '2026-02-03 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 18:56:05'),
+(8, 28, 'Preventive Check: PLC Training System', 'Inspect wiring and IO modules, test sample PLC program, verify communications and power stability.', 'preventive', 'low', 'done', '2026-02-26 14:22:57', 10, 10, '2026-01-27 18:56:13', '2026-01-27 14:22:57', '2026-01-27 18:56:13'),
+(9, 29, 'Preventive Check: Machine Vision Inspection System', 'Clean camera lens and lighting, verify focus and exposure, test defect detection and software health.', 'preventive', 'medium', 'open', '2026-02-17 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 14:42:08'),
+(10, 30, 'Fix Fault: Automated Guided Vehicle (AGV)', 'AGV is currently faulty. Inspect battery, sensors, navigation system, motors and safety systems, then perform supervised test run.', 'corrective', 'high', 'open', '2026-01-28 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 18:54:56');
 
 -- --------------------------------------------------------
 
@@ -327,6 +535,18 @@ CREATE TABLE `training_materials` (
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `training_materials`
+--
+
+INSERT INTO `training_materials` (`material_id`, `title`, `material_type`, `file_url`, `file_path`, `version`, `uploaded_by`, `created_at`, `updated_at`) VALUES
+(1, '3-Axis CNC Milling Machine – Training Material', 'pdf', NULL, 'C:/xampp/htdocs/swap_project/uploads/3-Axis_CNC_Milling_Machine.pdf', 'v1.0', 8, '2026-01-27 19:27:55', '2026-01-27 23:19:37'),
+(2, 'CNC Turning Lathe – Training Material', 'pdf', NULL, 'C:/xampp/htdocs/swap_project/uploads/CNC_Turning_Lathe.pdf', 'v1.0', 8, '2026-01-27 19:27:55', '2026-01-27 23:20:02'),
+(3, 'Industrial Robotic Arm – Training Material', 'pdf', NULL, 'C:/xampp/htdocs/swap_project/uploads/Industrial_Robotic_Arm.pdf', 'v1.0', 8, '2026-01-27 19:27:55', '2026-01-27 23:20:14'),
+(4, '3-Axis CNC Milling Machine – Video Tutorial', 'video', 'https://www.youtube.com/watch?v=CqePrbeAQoM&t=145s', NULL, 'v1.0', 8, '2026-01-27 22:38:12', '2026-01-27 22:42:13'),
+(5, 'Industrial Robotic Arm – Video Tutorial', 'video', 'https://www.youtube.com/watch?v=SisrRUX_Zfk', NULL, 'v1.0', 8, '2026-01-27 22:38:12', '2026-01-27 22:42:13'),
+(6, 'Metal 3D Printing – Video Tutorial', 'video', 'https://www.youtube.com/watch?v=19XZ4jwrXe0', NULL, 'v1.0', 8, '2026-01-27 22:38:12', '2026-01-27 22:42:13');
+
 -- --------------------------------------------------------
 
 --
@@ -354,13 +574,13 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`user_id`, `role_id`, `tp_admin_no`, `username`, `email`, `password_hash`, `full_name`, `status`, `failed_login_count`, `locked_until`, `last_login_at`, `created_at`, `updated_at`) VALUES
-(8, 1, '1234567A', 'sysadmin', 'john_lee@tp.edu.sg', '$2y$10$abcdefghijklmnopqrstuv', 'System Administrator', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-19 14:00:40'),
-(9, 2, '1234567B', 'amc_manager', 'jane_lee@tp.edu.sg', '$2y$10$abcdefghijklmnopqrstuv', 'AMC Manager', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-19 14:00:40'),
-(10, 3, '1234567C', 'amc_technician', 'lily_ng@tp.edu.sg', '$2y$10$abcdefghijklmnopqrstuv', 'AMC Technician', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-19 14:00:40'),
-(11, 4, '2503456C', 'jason_lim', '2503456C@student.tp.edu.sg', '$2y$10$abcdefghijklmnopqrstuv', 'Jason Lim Wei Jie', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-19 14:00:40'),
-(12, 4, '2309876D', 'amelia_tan', '2309876D@student.tp.edu.sg', '$2y$10$abcdefghijklmnopqrstuv', 'Amelia Tan Xin Yi', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-19 14:00:40'),
-(13, 4, '2406789E', 'ryan_goh', '2406789E@student.tp.edu.sg', '$2y$10$abcdefghijklmnopqrstuv', 'Ryan Goh Jun Hao', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-19 14:00:40'),
-(14, 4, '2501122F', 'nur_aisyah', '2501122F@student.tp.edu.sg', '$2y$10$abcdefghijklmnopqrstuv', 'Nur Aisyah Binte Ahmad', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-19 14:00:40');
+(8, 1, '1234567A', 'sysadmin', 'john_lee@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'System Administrator', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
+(9, 2, '1234567B', 'amc_manager', 'jane_lee@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'AMC Manager', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
+(10, 3, '1234567C', 'amc_technician', 'lily_ng@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'AMC Technician', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
+(11, 4, '2503456C', 'jason_lim', '2503456C@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Jason Lim Wei Jie', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
+(12, 4, '2309876D', 'amelia_tan', '2309876D@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Amelia Tan Xin Yi', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
+(13, 4, '2406789E', 'ryan_goh', '2406789E@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Ryan Goh Jun Hao', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
+(14, 4, '2501122F', 'nur_aisyah', '2501122F@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Nur Aisyah Binte Ahmad', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53');
 
 -- --------------------------------------------------------
 
@@ -530,25 +750,25 @@ ALTER TABLE `user_certifications`
 -- AUTO_INCREMENT for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
-  MODIFY `audit_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `audit_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=184;
 
 --
 -- AUTO_INCREMENT for table `bookings`
 --
 ALTER TABLE `bookings`
-  MODIFY `booking_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `booking_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
 
 --
 -- AUTO_INCREMENT for table `booking_waitlist`
 --
 ALTER TABLE `booking_waitlist`
-  MODIFY `waitlist_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `waitlist_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `certifications`
 --
 ALTER TABLE `certifications`
-  MODIFY `cert_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `cert_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `equipment`
@@ -578,13 +798,13 @@ ALTER TABLE `incident_investigations`
 -- AUTO_INCREMENT for table `maintenance_records`
 --
 ALTER TABLE `maintenance_records`
-  MODIFY `record_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `record_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `maintenance_tasks`
 --
 ALTER TABLE `maintenance_tasks`
-  MODIFY `task_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `task_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `roles`
@@ -596,7 +816,7 @@ ALTER TABLE `roles`
 -- AUTO_INCREMENT for table `training_materials`
 --
 ALTER TABLE `training_materials`
-  MODIFY `material_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `material_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `users`
