@@ -12,17 +12,64 @@ $roleDestinations = [
 	'admin' => 'admin.php',
 	'manager' => 'manager.php',
 	'technician' => 'technician.php',
-	'user' => 'index.php',
+	'student' => 'index.php',
+	'staff' => 'index.php',
 ];
+
+$roleAllowedTargets = [
+	'admin' => [
+		'admin.php',
+		'manager.php',
+		'technician.php',
+		'approve-bookings.php',
+	],
+	'manager' => [
+		'manager.php',
+		'approve-bookings.php',
+		'technician.php',
+	],
+	'technician' => [
+		'technician.php',
+	],
+	'student' => [
+		'index.php',
+		'learning-space.php',
+		'book-machines.php',
+		'report-fault.php',
+		'download-material.php',
+	],
+	'staff' => [
+		'index.php',
+		'learning-space.php',
+		'book-machines.php',
+		'report-fault.php',
+		'download-material.php',
+	],
+];
+
+$resolveDestination = static function (string $roleKey, string $redirectTarget) use ($roleDestinations, $roleAllowedTargets): string {
+	$roleKey = strtolower(trim($roleKey));
+	$defaultDestination = $roleDestinations[$roleKey] ?? 'index.php';
+	if ($redirectTarget === '') {
+		return $defaultDestination;
+	}
+	$path = parse_url($redirectTarget, PHP_URL_PATH);
+	$normalizedTarget = strtolower(ltrim((string) $path, '/'));
+	if ($normalizedTarget === '') {
+		return $defaultDestination;
+	}
+	$allowedTargets = $roleAllowedTargets[$roleKey] ?? [];
+	if (!in_array($normalizedTarget, $allowedTargets, true)) {
+		return $defaultDestination;
+	}
+	return $redirectTarget;
+};
 
 $redirectTarget = sanitize_redirect_target($_POST['redirect_to'] ?? $_GET['redirect'] ?? '');
 if (is_authenticated()) {
-	$alreadyDestination = $redirectTarget;
-	if ($alreadyDestination === '') {
-		$sessionUser = current_user();
-		$roleKey = strtolower(trim((string) ($sessionUser['role_name'] ?? '')));
-		$alreadyDestination = $roleDestinations[$roleKey] ?? 'index.php';
-	}
+	$sessionUser = current_user();
+	$roleKey = strtolower(trim((string) ($sessionUser['role_name'] ?? '')));
+	$alreadyDestination = $resolveDestination($roleKey, $redirectTarget);
 	redirect_if_authenticated($alreadyDestination);
 }
 
@@ -101,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				unset($_SESSION[$throttleKey]);
 
 				$roleKey = strtolower(trim($user['role_name'] ?? ''));
-				$destination = $redirectTarget !== '' ? $redirectTarget : ($roleDestinations[$roleKey] ?? 'index.php');
+				$destination = $resolveDestination($roleKey, $redirectTarget);
 
 				$actorId = (int) $user['user_id'];
 				$entityId = $actorId;
@@ -154,7 +201,7 @@ $csrfToken = generate_csrf_token('login_form');
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Admin Login</title>
+		<title>Login</title>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link

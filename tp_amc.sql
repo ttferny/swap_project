@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jan 28, 2026 at 06:39 AM
+-- Generation Time: Jan 29, 2026 at 04:28 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.1.25
 
@@ -44,93 +44,127 @@ CREATE TABLE `audit_logs` (
 --
 
 INSERT INTO `audit_logs` (`audit_id`, `actor_user_id`, `action`, `entity_type`, `entity_id`, `ip_address`, `user_agent`, `details`, `created_at`) VALUES
-(97, 8, 'login', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567A\",\"role\":\"Admin\"}', '2026-01-27 12:25:20'),
-(98, 8, 'logout', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567A\"}', '2026-01-27 12:25:25'),
-(99, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 12:25:40'),
-(100, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 12:25:43'),
-(101, NULL, 'login_lockout', 'authentication', NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"admin_number\":\"1234567C\",\"attempts\":3,\"lock_seconds\":300}', '2026-01-27 12:25:54'),
-(102, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 12:35:42'),
-(103, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 12:35:57'),
-(104, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 12:36:06'),
-(105, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 12:36:43'),
-(106, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 12:38:20'),
-(107, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 12:39:34'),
-(108, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:39:49'),
-(109, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:48:57'),
-(110, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:49:06'),
-(111, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:53:41'),
-(112, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:53:47'),
-(113, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:54:09'),
-(114, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:54:14'),
-(115, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 12:55:52'),
-(116, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 12:55:57'),
-(117, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 13:04:49'),
-(118, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 13:04:54'),
-(119, 10, 'equipment_status_updated', 'equipment', 21, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"new_status\":\"maintenance\"}', '2026-01-27 13:05:14'),
-(120, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 13:05:19'),
-(121, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 13:06:06'),
-(122, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 14:11:51'),
-(123, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 14:27:08'),
-(124, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 14:27:13'),
-(125, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 14:27:25'),
-(126, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 14:27:31'),
-(127, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 14:43:08'),
-(128, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 14:43:14'),
-(129, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 15:01:46'),
-(130, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 15:02:05'),
-(131, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 15:40:09'),
-(132, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 15:40:31'),
-(133, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:06:05'),
-(134, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:06:16'),
-(135, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:17:07'),
-(136, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 16:17:19'),
-(137, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 16:17:28'),
-(138, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 16:20:21'),
-(139, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:35:47'),
-(140, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:37:35'),
-(141, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:38:52'),
-(142, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 16:40:21'),
-(143, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:40:44'),
-(144, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 16:40:55'),
-(145, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 16:48:55'),
-(146, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:49:01'),
-(147, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:52:10'),
-(148, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:52:23'),
-(149, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:52:43'),
-(150, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 16:52:50'),
-(151, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 16:53:05'),
-(152, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 17:18:17'),
-(153, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 17:18:27'),
-(154, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 17:18:32'),
-(155, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 18:29:52'),
-(156, 8, 'login', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567A\",\"role\":\"Admin\"}', '2026-01-27 18:30:00'),
-(157, 8, 'logout', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567A\"}', '2026-01-27 18:30:06'),
-(158, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 18:30:11'),
-(159, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 18:30:17'),
-(160, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 18:30:22'),
-(161, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 18:58:00'),
-(162, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 18:58:18'),
-(163, 11, 'booking_created', 'bookings', 23, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":21,\"purpose\":\"for project work\",\"origin\":\"portal_booking_form\"}', '2026-01-27 19:00:07'),
-(164, 11, 'booking_created', 'bookings', 24, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":24,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-27 19:00:23'),
-(165, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 19:00:58'),
-(166, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:01:08'),
-(167, 13, 'booking_created', 'bookings', 25, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":30,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-27 19:01:25'),
-(168, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 19:01:35'),
-(169, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-27 19:01:40'),
-(170, 9, 'booking_approved', 'booking', 25, NULL, NULL, '{\"equipment_id\":30,\"requester_id\":13,\"start_time\":\"2026-01-28 07:06:00\",\"end_time\":\"2026-01-28 07:36:00\"}', '2026-01-27 19:01:43'),
-(171, 9, 'booking_approved', 'booking', 24, NULL, NULL, '{\"equipment_id\":24,\"requester_id\":11,\"start_time\":\"2026-01-29 12:03:00\",\"end_time\":\"2026-01-29 13:03:00\"}', '2026-01-27 19:01:44'),
-(172, 9, 'booking_approved', 'booking', 23, NULL, NULL, '{\"equipment_id\":21,\"requester_id\":11,\"start_time\":\"2026-01-30 06:59:00\",\"end_time\":\"2026-01-30 08:29:00\"}', '2026-01-27 19:01:46'),
-(173, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-27 19:01:48'),
-(174, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"User\"}', '2026-01-27 19:01:56'),
-(175, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-27 19:05:24'),
-(176, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:05:31'),
-(177, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 19:05:45'),
-(178, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:05:52'),
-(179, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-27 19:12:11'),
-(180, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-27 19:12:17'),
-(181, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-27 19:12:30'),
-(182, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 19:12:35'),
-(183, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-27 22:42:51');
+(222, NULL, 'booking_flagged', 'bookings', 22, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"requester_id\":13}', '2026-01-29 16:30:45'),
+(223, NULL, 'booking_flagged', 'bookings', 26, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"requester_id\":13}', '2026-01-29 16:30:45'),
+(224, NULL, 'booking_flagged', 'bookings', 27, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"requester_id\":13}', '2026-01-29 16:31:59'),
+(225, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 16:53:42'),
+(226, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"User\"}', '2026-01-29 16:54:44'),
+(227, 13, 'incident_reported', 'incidents', 1, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"high\",\"category\":\"injury\",\"equipment_id\":23}', '2026-01-29 17:08:34'),
+(228, 13, 'incident_reported', 'incidents', 2, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"low\",\"category\":\"damage\",\"equipment_id\":null}', '2026-01-29 17:10:24'),
+(229, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 17:15:06'),
+(230, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 17:15:20'),
+(231, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 17:15:25'),
+(232, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 17:16:12'),
+(233, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 17:30:00'),
+(234, 15, 'login', 'authentication', 15, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567D\",\"role\":\"Staff\"}', '2026-01-29 17:30:10'),
+(235, 15, 'logout', 'authentication', 15, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567D\"}', '2026-01-29 17:30:21'),
+(236, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 17:33:55'),
+(237, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 17:33:59'),
+(238, 8, 'login', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567A\",\"role\":\"Admin\"}', '2026-01-29 17:34:11'),
+(239, 8, 'logout', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567A\"}', '2026-01-29 17:34:16'),
+(240, NULL, 'login_lockout', 'authentication', NULL, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"admin_number\":\"2506789C\",\"attempts\":3,\"lock_seconds\":300}', '2026-01-29 17:34:31'),
+(241, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 17:56:06'),
+(242, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 17:56:10'),
+(243, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 17:56:30'),
+(244, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 17:56:42'),
+(245, 15, 'login', 'authentication', 15, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567D\",\"role\":\"Staff\"}', '2026-01-29 17:56:48'),
+(246, 15, 'logout', 'authentication', 15, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567D\"}', '2026-01-29 17:56:54'),
+(247, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 17:56:59'),
+(248, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 18:29:39'),
+(249, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 18:30:07'),
+(250, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 20:50:05'),
+(251, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 20:50:11'),
+(252, 13, 'user_cert_action', 'certification', 4, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:27'),
+(253, 13, 'user_cert_action', 'certification', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:29'),
+(254, 13, 'user_cert_action', 'certification', 12, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:30'),
+(255, 13, 'user_cert_action', 'certification', 6, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:32'),
+(256, 13, 'user_cert_action', 'certification', 7, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:33'),
+(257, 13, 'user_cert_action', 'certification', 18, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:36'),
+(258, 13, 'user_cert_action', 'certification', 3, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:37'),
+(259, 13, 'user_cert_action', 'certification', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:39'),
+(260, 13, 'user_cert_action', 'certification', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:41'),
+(261, 13, 'user_cert_action', 'certification', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"action\":\"request\"}', '2026-01-29 20:50:44'),
+(262, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 20:50:46'),
+(263, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 20:50:54'),
+(264, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 20:50:57'),
+(265, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 20:54:13'),
+(266, 13, 'booking_created', 'bookings', 28, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":21,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:54:27'),
+(267, 13, 'booking_created', 'bookings', 29, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":22,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:54:40'),
+(268, 13, 'booking_created', 'bookings', 30, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":21,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:55:00'),
+(269, 13, 'booking_created', 'bookings', 31, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":25,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:55:12'),
+(270, 13, 'booking_created', 'bookings', 32, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":26,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:55:26'),
+(271, 13, 'booking_created', 'bookings', 33, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":28,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:55:40'),
+(272, 13, 'booking_created', 'bookings', 34, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":28,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:55:55'),
+(273, 13, 'booking_created', 'bookings', 35, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"equipment_id\":29,\"purpose\":\"Booking submitted via portal.\",\"origin\":\"portal_booking_form\"}', '2026-01-29 20:56:10'),
+(274, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 20:56:17'),
+(275, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 20:56:25'),
+(276, 9, 'booking_approved', 'booking', 28, NULL, NULL, '{\"equipment_id\":21,\"requester_id\":13,\"start_time\":\"2026-01-14 08:54:00\",\"end_time\":\"2026-01-14 09:54:00\"}', '2026-01-29 20:56:29'),
+(277, 9, 'booking_approved', 'booking', 29, NULL, NULL, '{\"equipment_id\":22,\"requester_id\":13,\"start_time\":\"2026-01-14 20:54:00\",\"end_time\":\"2026-01-14 21:54:00\"}', '2026-01-29 20:56:30'),
+(278, 9, 'booking_approved', 'booking', 30, NULL, NULL, '{\"equipment_id\":21,\"requester_id\":13,\"start_time\":\"2026-01-15 20:56:00\",\"end_time\":\"2026-01-15 22:56:00\"}', '2026-01-29 20:56:30'),
+(279, 9, 'booking_approved', 'booking', 35, NULL, NULL, '{\"equipment_id\":29,\"requester_id\":13,\"start_time\":\"2026-01-20 11:56:00\",\"end_time\":\"2026-01-20 13:56:00\"}', '2026-01-29 20:56:31'),
+(280, 9, 'booking_approved', 'booking', 33, NULL, NULL, '{\"equipment_id\":28,\"requester_id\":13,\"start_time\":\"2026-01-24 08:56:00\",\"end_time\":\"2026-01-24 09:26:00\"}', '2026-01-29 20:56:32'),
+(281, 9, 'booking_approved', 'booking', 34, NULL, NULL, '{\"equipment_id\":28,\"requester_id\":13,\"start_time\":\"2026-01-24 15:55:00\",\"end_time\":\"2026-01-24 16:55:00\"}', '2026-01-29 20:56:32'),
+(282, 9, 'booking_approved', 'booking', 31, NULL, NULL, '{\"equipment_id\":25,\"requester_id\":13,\"start_time\":\"2026-01-27 11:57:00\",\"end_time\":\"2026-01-27 12:57:00\"}', '2026-01-29 20:56:33'),
+(283, 9, 'booking_approved', 'booking', 32, NULL, NULL, '{\"equipment_id\":26,\"requester_id\":13,\"start_time\":\"2026-01-28 08:00:00\",\"end_time\":\"2026-01-28 11:00:00\"}', '2026-01-29 20:56:33'),
+(284, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 20:57:11'),
+(285, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 20:57:15'),
+(286, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 20:57:23'),
+(287, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 20:57:31'),
+(288, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 21:19:05'),
+(289, 11, 'login', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2503456C\",\"role\":\"Student\"}', '2026-01-29 21:19:11'),
+(290, 11, 'incident_reported', 'incidents', 3, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"security\",\"equipment_id\":27}', '2026-01-29 21:19:59'),
+(291, 11, 'incident_reported', 'incidents', 4, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"near_miss\",\"equipment_id\":29}', '2026-01-29 21:20:32'),
+(292, 11, 'incident_reported', 'incidents', 5, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"near_miss\",\"equipment_id\":29}', '2026-01-29 21:20:47'),
+(293, 11, 'incident_reported', 'incidents', 6, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"near_miss\",\"equipment_id\":29}', '2026-01-29 21:21:04'),
+(294, 11, 'incident_reported', 'incidents', 7, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":27}', '2026-01-29 21:21:31'),
+(295, 11, 'incident_reported', 'incidents', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":27}', '2026-01-29 21:21:47'),
+(296, 11, 'incident_reported', 'incidents', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"high\",\"category\":\"injury\",\"equipment_id\":27}', '2026-01-29 21:21:56'),
+(297, 11, 'incident_reported', 'incidents', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":27}', '2026-01-29 21:22:04'),
+(298, 11, 'logout', 'authentication', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2503456C\"}', '2026-01-29 21:22:07'),
+(299, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 21:22:12'),
+(300, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 21:24:56'),
+(301, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 21:25:01'),
+(302, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 21:25:34'),
+(303, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 21:25:44'),
+(304, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 21:26:53'),
+(305, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 21:26:58'),
+(306, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 21:49:43'),
+(307, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 21:49:48'),
+(308, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 21:52:08'),
+(309, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 21:52:13'),
+(310, 13, 'incident_reported', 'incidents', 11, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"low\",\"category\":\"near_miss\",\"equipment_id\":21}', '2026-01-29 21:52:25'),
+(311, 13, 'incident_reported', 'incidents', 12, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"injury\",\"equipment_id\":21}', '2026-01-29 21:52:33'),
+(312, 13, 'incident_reported', 'incidents', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":24}', '2026-01-29 21:52:42'),
+(313, 13, 'incident_reported', 'incidents', 14, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":24}', '2026-01-29 21:52:49'),
+(314, 13, 'incident_reported', 'incidents', 15, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":24}', '2026-01-29 21:52:56'),
+(315, 13, 'incident_reported', 'incidents', 16, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"injury\",\"equipment_id\":24}', '2026-01-29 21:53:08'),
+(316, 13, 'incident_reported', 'incidents', 17, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"high\",\"category\":\"damage\",\"equipment_id\":26}', '2026-01-29 21:53:20'),
+(317, 13, 'incident_reported', 'incidents', 18, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"hazard\",\"equipment_id\":23}', '2026-01-29 21:53:31'),
+(318, 13, 'incident_reported', 'incidents', 19, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"hazard\",\"equipment_id\":23}', '2026-01-29 21:53:40'),
+(319, 13, 'incident_reported', 'incidents', 20, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"security\",\"equipment_id\":23}', '2026-01-29 21:53:53'),
+(320, 13, 'incident_reported', 'incidents', 21, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"other\",\"equipment_id\":null}', '2026-01-29 21:54:15'),
+(321, 13, 'incident_reported', 'incidents', 22, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"low\",\"category\":\"other\",\"equipment_id\":21}', '2026-01-29 21:59:14'),
+(322, 13, 'incident_reported', 'incidents', 23, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"high\",\"category\":\"near_miss\",\"equipment_id\":21}', '2026-01-29 21:59:27'),
+(323, 13, 'incident_reported', 'incidents', 24, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":22}', '2026-01-29 21:59:42'),
+(324, 13, 'incident_reported', 'incidents', 25, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":22}', '2026-01-29 21:59:48'),
+(325, 13, 'incident_reported', 'incidents', 26, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"critical\",\"category\":\"injury\",\"equipment_id\":22}', '2026-01-29 21:59:55'),
+(326, 13, 'incident_reported', 'incidents', 27, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"damage\",\"equipment_id\":29}', '2026-01-29 22:02:23'),
+(327, 13, 'incident_reported', 'incidents', 28, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"damage\",\"equipment_id\":27}', '2026-01-29 22:02:31'),
+(328, 13, 'incident_reported', 'incidents', 29, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"medium\",\"category\":\"damage\",\"equipment_id\":27}', '2026-01-29 22:02:36'),
+(329, 13, 'incident_reported', 'incidents', 30, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"low\",\"category\":\"security\",\"equipment_id\":29}', '2026-01-29 22:02:43'),
+(330, 13, 'incident_reported', 'incidents', 31, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"low\",\"category\":\"hazard\",\"equipment_id\":null}', '2026-01-29 22:02:52'),
+(331, 13, 'incident_reported', 'incidents', 32, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"severity\":\"low\",\"category\":\"other\",\"equipment_id\":null}', '2026-01-29 22:03:10'),
+(332, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 22:04:33'),
+(333, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 22:04:37'),
+(334, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 23:22:08'),
+(335, 9, 'login', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567B\",\"role\":\"Manager\"}', '2026-01-29 23:22:12'),
+(336, 9, 'logout', 'authentication', 9, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567B\"}', '2026-01-29 23:22:23'),
+(337, 8, 'login', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567A\",\"role\":\"Admin\"}', '2026-01-29 23:22:28'),
+(338, 8, 'logout', 'authentication', 8, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567A\"}', '2026-01-29 23:22:33'),
+(339, 10, 'login', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"1234567C\",\"role\":\"Technician\"}', '2026-01-29 23:22:42'),
+(340, 10, 'logout', 'authentication', 10, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"1234567C\"}', '2026-01-29 23:22:49'),
+(341, 13, 'login', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"login\",\"admin_number\":\"2406789E\",\"role\":\"Student\"}', '2026-01-29 23:22:53'),
+(342, 13, 'logout', 'authentication', 13, '::1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36', '{\"event\":\"logout\",\"admin_number\":\"2406789E\"}', '2026-01-29 23:23:10');
 
 -- --------------------------------------------------------
 
@@ -163,10 +197,20 @@ CREATE TABLE `bookings` (
 
 INSERT INTO `bookings` (`booking_id`, `equipment_id`, `requester_id`, `start_time`, `end_time`, `purpose`, `status`, `requires_approval`, `approved_by`, `approved_at`, `rejection_reason`, `cancelled_at`, `cancelled_by`, `flag_reason`, `created_at`, `updated_at`) VALUES
 (21, 21, 13, '2026-01-01 08:35:00', '2026-01-01 10:05:00', 'meow', 'rejected', 1, 13, '2026-01-21 20:36:06', '', NULL, NULL, NULL, '2026-01-21 20:36:01', '2026-01-21 20:36:06'),
-(22, 21, 13, '2026-01-01 08:35:00', '2026-01-01 10:05:00', 'meow', 'cancelled', 1, NULL, NULL, NULL, '2026-01-21 20:36:15', 13, NULL, '2026-01-21 20:36:09', '2026-01-21 20:36:15'),
+(22, 21, 13, '2026-01-01 08:35:00', '2026-01-01 10:05:00', 'meow', 'flagged', 1, NULL, NULL, NULL, '2026-01-21 20:36:15', 13, NULL, '2026-01-21 20:36:09', '2026-01-29 16:12:03'),
 (23, 21, 11, '2026-01-30 06:59:00', '2026-01-30 08:29:00', 'for project work', 'approved', 1, 9, '2026-01-27 19:01:46', NULL, NULL, NULL, NULL, '2026-01-27 19:00:07', '2026-01-27 19:01:46'),
 (24, 24, 11, '2026-01-29 12:03:00', '2026-01-29 13:03:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-27 19:01:44', NULL, NULL, NULL, NULL, '2026-01-27 19:00:23', '2026-01-27 19:01:44'),
-(25, 30, 13, '2026-01-28 07:06:00', '2026-01-28 07:36:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-27 19:01:43', NULL, NULL, NULL, NULL, '2026-01-27 19:01:25', '2026-01-27 19:01:43');
+(25, 30, 13, '2026-01-28 07:06:00', '2026-01-28 07:36:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-27 19:01:43', NULL, NULL, NULL, NULL, '2026-01-27 19:01:25', '2026-01-27 19:01:43'),
+(26, 21, 13, '2026-02-12 16:20:00', '2026-02-12 17:20:00', 'Booking submitted via portal.', 'flagged', 1, 9, '2026-01-29 16:22:07', 'no!', NULL, NULL, NULL, '2026-01-29 16:21:30', '2026-01-29 16:30:40'),
+(27, 25, 13, '2026-01-31 16:24:00', '2026-01-31 17:24:00', 'plsss', 'flagged', 1, 9, '2026-01-29 16:25:47', 'you do not have the required safety certification', NULL, NULL, NULL, '2026-01-29 16:25:03', '2026-01-29 16:31:40'),
+(28, 21, 13, '2026-01-14 08:54:00', '2026-01-14 09:54:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:29', NULL, NULL, NULL, NULL, '2026-01-29 20:54:27', '2026-01-29 20:56:29'),
+(29, 22, 13, '2026-01-14 20:54:00', '2026-01-14 21:54:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:30', NULL, NULL, NULL, NULL, '2026-01-29 20:54:40', '2026-01-29 20:56:30'),
+(30, 21, 13, '2026-01-15 20:56:00', '2026-01-15 22:56:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:30', NULL, NULL, NULL, NULL, '2026-01-29 20:55:00', '2026-01-29 20:56:30'),
+(31, 25, 13, '2026-01-27 11:57:00', '2026-01-27 12:57:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:33', NULL, NULL, NULL, NULL, '2026-01-29 20:55:12', '2026-01-29 20:56:33'),
+(32, 26, 13, '2026-01-28 08:00:00', '2026-01-28 11:00:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:33', NULL, NULL, NULL, NULL, '2026-01-29 20:55:26', '2026-01-29 20:56:33'),
+(33, 28, 13, '2026-01-24 08:56:00', '2026-01-24 09:26:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:32', NULL, NULL, NULL, NULL, '2026-01-29 20:55:40', '2026-01-29 20:56:32'),
+(34, 28, 13, '2026-01-24 15:55:00', '2026-01-24 16:55:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:32', NULL, NULL, NULL, NULL, '2026-01-29 20:55:55', '2026-01-29 20:56:32'),
+(35, 29, 13, '2026-01-20 11:56:00', '2026-01-20 13:56:00', 'Booking submitted via portal.', 'approved', 1, 9, '2026-01-29 20:56:31', NULL, NULL, NULL, NULL, '2026-01-29 20:56:10', '2026-01-29 20:56:31');
 
 --
 -- Triggers `bookings`
@@ -413,6 +457,23 @@ CREATE TABLE `incidents` (
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `incidents`
+--
+
+INSERT INTO `incidents` (`incident_id`, `reported_by`, `equipment_id`, `severity`, `category`, `location`, `description`, `status`, `created_at`, `updated_at`) VALUES
+(22, 13, 21, 'low', 'other', '3-Axis CNC Milling Machine', 'a', 'submitted', '2026-01-29 21:59:14', '2026-01-29 21:59:14'),
+(23, 13, 21, 'high', 'near_miss', '3-Axis CNC Milling Machine', 's', 'submitted', '2026-01-29 21:59:27', '2026-01-29 21:59:27'),
+(24, 13, 22, 'critical', 'injury', 'CNC Turning Lathe', 'a', 'submitted', '2026-01-29 21:59:42', '2026-01-29 21:59:42'),
+(25, 13, 22, 'critical', 'injury', 'CNC Turning Lathe', 'a', 'submitted', '2026-01-29 21:59:48', '2026-01-29 21:59:48'),
+(26, 13, 22, 'critical', 'injury', 'CNC Turning Lathe', 'a', 'submitted', '2026-01-29 21:59:55', '2026-01-29 21:59:55'),
+(27, 13, 29, 'medium', 'damage', 'Machine Vision Inspection System', 'a', 'submitted', '2026-01-29 22:02:23', '2026-01-29 22:02:23'),
+(28, 13, 27, 'medium', 'damage', 'Coordinate Measuring Machine (CMM)', 'a', 'submitted', '2026-01-29 22:02:31', '2026-01-29 22:02:31'),
+(29, 13, 27, 'medium', 'damage', 'Coordinate Measuring Machine (CMM)', 'a', 'submitted', '2026-01-29 22:02:36', '2026-01-29 22:02:36'),
+(30, 13, 29, 'low', 'security', 'Machine Vision Inspection System', 'a', 'submitted', '2026-01-29 22:02:43', '2026-01-29 22:02:43'),
+(31, 13, NULL, 'low', 'hazard', 'counter', 'aa', 'submitted', '2026-01-29 22:02:52', '2026-01-29 22:02:52'),
+(32, 13, NULL, 'low', 'other', 'door', 'a', 'submitted', '2026-01-29 22:03:10', '2026-01-29 22:03:10');
+
 -- --------------------------------------------------------
 
 --
@@ -515,7 +576,8 @@ INSERT INTO `roles` (`role_id`, `role_name`, `description`) VALUES
 (1, 'Admin', 'Full system admin'),
 (2, 'Manager', 'Supervisor/manager approving bookings and handling incidents'),
 (3, 'Technician', 'Handles maintenance tasks and equipment status updates'),
-(4, 'User', 'Regular user (staff/student)');
+(4, 'Student', 'Regular user (student)'),
+(5, 'Staff', 'Regular user (Staff)');
 
 -- --------------------------------------------------------
 
@@ -580,7 +642,12 @@ INSERT INTO `users` (`user_id`, `role_id`, `tp_admin_no`, `username`, `email`, `
 (11, 4, '2503456C', 'jason_lim', '2503456C@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Jason Lim Wei Jie', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
 (12, 4, '2309876D', 'amelia_tan', '2309876D@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Amelia Tan Xin Yi', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
 (13, 4, '2406789E', 'ryan_goh', '2406789E@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Ryan Goh Jun Hao', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
-(14, 4, '2501122F', 'nur_aisyah', '2501122F@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Nur Aisyah Binte Ahmad', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53');
+(14, 4, '2501122F', 'nur_aisyah', '2501122F@student.tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Nur Aisyah Binte Ahmad', 'active', 0, NULL, NULL, '2026-01-19 14:00:40', '2026-01-20 19:46:53'),
+(15, 5, '1234567D', 'daniel_tan_staff', 'daniel_tan@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Daniel Tan', 'active', 0, NULL, NULL, '2026-01-29 17:28:08', '2026-01-29 17:28:08'),
+(16, 5, '1234567E', 'cheryl_lim_staff', 'cheryl_lim@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Cheryl Lim', 'active', 0, NULL, NULL, '2026-01-29 17:28:08', '2026-01-29 17:29:15'),
+(17, 5, '1234567F', 'muhammad_irfan_staff', 'muhammad_irfan@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Muhammad Irfan', 'active', 0, NULL, NULL, '2026-01-29 17:28:08', '2026-01-29 17:29:29'),
+(18, 5, '1234567G', 'nur_aisyah_staff', 'siti_nur_aisyah@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Siti Nur Aisyah', 'active', 0, NULL, NULL, '2026-01-29 17:28:08', '2026-01-29 17:29:44'),
+(19, 5, '1234567H', 'benjamin_ong_staff', 'benjamin_ong@tp.edu.sg', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Benjamin Ong', 'active', 0, NULL, NULL, '2026-01-29 17:28:08', '2026-01-29 17:29:53');
 
 -- --------------------------------------------------------
 
@@ -599,6 +666,30 @@ CREATE TABLE `user_certifications` (
   `verified_at` datetime DEFAULT NULL,
   `notes` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `user_certifications`
+--
+
+INSERT INTO `user_certifications` (`user_cert_id`, `user_id`, `cert_id`, `status`, `completed_at`, `expires_at`, `verified_by`, `verified_at`, `notes`) VALUES
+(5, 13, 5, 'completed', NULL, NULL, NULL, NULL, NULL),
+(6, 13, 15, 'completed', NULL, NULL, NULL, NULL, NULL),
+(7, 13, 16, 'completed', NULL, NULL, NULL, NULL, NULL),
+(8, 13, 17, 'completed', NULL, NULL, NULL, NULL, NULL),
+(9, 13, 10, 'completed', NULL, NULL, NULL, NULL, NULL),
+(10, 13, 1, 'completed', NULL, NULL, NULL, NULL, NULL),
+(11, 13, 14, 'completed', NULL, NULL, NULL, NULL, NULL),
+(12, 13, 2, 'completed', NULL, NULL, NULL, NULL, NULL),
+(13, 13, 4, 'completed', NULL, NULL, NULL, NULL, NULL),
+(14, 13, 9, 'completed', NULL, NULL, NULL, NULL, NULL),
+(15, 13, 12, 'completed', NULL, NULL, NULL, NULL, NULL),
+(16, 13, 6, 'completed', NULL, NULL, NULL, NULL, NULL),
+(17, 13, 7, 'completed', NULL, NULL, NULL, NULL, NULL),
+(18, 13, 18, 'completed', NULL, NULL, NULL, NULL, NULL),
+(19, 13, 3, 'completed', NULL, NULL, NULL, NULL, NULL),
+(20, 13, 13, 'completed', NULL, NULL, NULL, NULL, NULL),
+(21, 13, 11, 'completed', NULL, NULL, NULL, NULL, NULL),
+(22, 13, 8, 'completed', NULL, NULL, NULL, NULL, NULL);
 
 --
 -- Indexes for dumped tables
@@ -750,13 +841,13 @@ ALTER TABLE `user_certifications`
 -- AUTO_INCREMENT for table `audit_logs`
 --
 ALTER TABLE `audit_logs`
-  MODIFY `audit_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=184;
+  MODIFY `audit_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=343;
 
 --
 -- AUTO_INCREMENT for table `bookings`
 --
 ALTER TABLE `bookings`
-  MODIFY `booking_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
+  MODIFY `booking_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=36;
 
 --
 -- AUTO_INCREMENT for table `booking_waitlist`
@@ -786,13 +877,13 @@ ALTER TABLE `equipment_status_history`
 -- AUTO_INCREMENT for table `incidents`
 --
 ALTER TABLE `incidents`
-  MODIFY `incident_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `incident_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 
 --
 -- AUTO_INCREMENT for table `incident_investigations`
 --
 ALTER TABLE `incident_investigations`
-  MODIFY `investigation_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `investigation_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `maintenance_records`
@@ -810,7 +901,7 @@ ALTER TABLE `maintenance_tasks`
 -- AUTO_INCREMENT for table `roles`
 --
 ALTER TABLE `roles`
-  MODIFY `role_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `role_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `training_materials`
@@ -822,13 +913,13 @@ ALTER TABLE `training_materials`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `user_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `user_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=20;
 
 --
 -- AUTO_INCREMENT for table `user_certifications`
 --
 ALTER TABLE `user_certifications`
-  MODIFY `user_cert_id` bigint(20) NOT NULL AUTO_INCREMENT;
+  MODIFY `user_cert_id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- Constraints for dumped tables

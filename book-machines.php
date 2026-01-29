@@ -40,6 +40,11 @@ $formValues = [
 $equipment = [];
 $equipmentById = [];
 $equipmentError = null;
+$certEligibilityError = null;
+$certsByEquipment = [];
+$userCertsById = [];
+$certifiedEquipmentIds = [];
+$certifiedEquipment = [];
 
 $equipmentResult = mysqli_query($conn, 'SELECT * FROM equipment');
 if ($equipmentResult === false) {
@@ -70,6 +75,80 @@ if ($equipmentResult === false) {
 	}
 
 	mysqli_free_result($equipmentResult);
+}
+
+$certsResult = mysqli_query(
+	$conn,
+	'SELECT equipment_id, cert_id FROM equipment_required_certs'
+);
+if ($certsResult === false) {
+	$certEligibilityError = 'Unable to verify certification requirements right now.';
+} else {
+	while ($row = mysqli_fetch_assoc($certsResult)) {
+		$equipmentId = (int) ($row['equipment_id'] ?? 0);
+		$certId = (int) ($row['cert_id'] ?? 0);
+		if ($equipmentId > 0 && $certId > 0) {
+			$certsByEquipment[$equipmentId][] = $certId;
+		}
+	}
+	mysqli_free_result($certsResult);
+}
+
+if ($currentUserId !== null) {
+	$userCertStmt = mysqli_prepare(
+		$conn,
+		'SELECT cert_id, status, expires_at FROM user_certifications WHERE user_id = ?'
+	);
+	if ($userCertStmt !== false) {
+		mysqli_stmt_bind_param($userCertStmt, 'i', $currentUserId);
+		mysqli_stmt_execute($userCertStmt);
+		$userCertResult = mysqli_stmt_get_result($userCertStmt);
+		if ($userCertResult) {
+			while ($row = mysqli_fetch_assoc($userCertResult)) {
+				$certId = (int) ($row['cert_id'] ?? 0);
+				if ($certId <= 0) {
+					continue;
+				}
+				$userCertsById[$certId] = [
+					'status' => (string) ($row['status'] ?? ''),
+					'expires_at' => $row['expires_at'] ?? null,
+				];
+			}
+			mysqli_free_result($userCertResult);
+		}
+		mysqli_stmt_close($userCertStmt);
+	} else {
+		$certEligibilityError = $certEligibilityError ?? 'Unable to verify certifications right now.';
+	}
+}
+
+if ($certEligibilityError === null && !empty($equipment)) {
+	foreach ($equipment as $machine) {
+		$equipmentId = (int) ($machine['id'] ?? 0);
+		if ($equipmentId <= 0) {
+			continue;
+		}
+		$requiredCerts = $certsByEquipment[$equipmentId] ?? [];
+		$isCertified = true;
+		if (!empty($requiredCerts)) {
+			foreach ($requiredCerts as $certId) {
+				$userCert = $userCertsById[$certId] ?? null;
+				if (!$userCert || ($userCert['status'] ?? '') !== 'completed') {
+					$isCertified = false;
+					break;
+				}
+				$expiresAt = $userCert['expires_at'] ?? null;
+				if ($expiresAt !== null && $expiresAt !== '' && strtotime((string) $expiresAt) < time()) {
+					$isCertified = false;
+					break;
+				}
+			}
+		}
+		if ($isCertified) {
+			$certifiedEquipmentIds[$equipmentId] = true;
+			$certifiedEquipment[] = $machine;
+		}
+	}
 }
 
 function truncateAuditText(?string $value, int $limit): string
@@ -128,30 +207,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$cancelMessages['error'][] = 'Invalid booking reference.';
 		} else {
 			$bookingId = (int) $bookingIdRaw;
-			$cancelStmt = mysqli_prepare(
+			$startTimeStmt = mysqli_prepare(
 				$conn,
-				"UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = ?, updated_at = NOW() WHERE booking_id = ? AND requester_id = ? AND status IN ('pending', 'approved')"
+				"SELECT start_time FROM bookings WHERE booking_id = ? AND requester_id = ? AND status IN ('pending', 'approved') LIMIT 1"
 			);
-			if ($cancelStmt) {
-				mysqli_stmt_bind_param($cancelStmt, 'iii', $currentUserId, $bookingId, $currentUserId);
-				mysqli_stmt_execute($cancelStmt);
-				if (mysqli_stmt_affected_rows($cancelStmt) === 1) {
-					logAuditEntry(
-						$conn,
-						$currentUserId,
-						'booking_cancelled',
-						'bookings',
-						$bookingId,
-						['cancelled_by' => $currentUserId]
-					);
-					$cancelMessages['success'][] = 'Booking cancelled successfully. Waitlisted requests will be notified automatically.';
-					promoteMatchingWaitlist($conn, $bookingId, $currentUserId);
-				} else {
-					$cancelMessages['error'][] = 'Unable to cancel that booking. It may already be processed.';
-				}
-				mysqli_stmt_close($cancelStmt);
-			} else {
+			if (!$startTimeStmt) {
 				$cancelMessages['error'][] = 'Unable to process cancellation right now.';
+			} else {
+				mysqli_stmt_bind_param($startTimeStmt, 'ii', $bookingId, $currentUserId);
+				mysqli_stmt_execute($startTimeStmt);
+				$startResult = mysqli_stmt_get_result($startTimeStmt);
+				$startRow = $startResult ? mysqli_fetch_assoc($startResult) : null;
+				if ($startResult) {
+					mysqli_free_result($startResult);
+				}
+				mysqli_stmt_close($startTimeStmt);
+				if (!$startRow || empty($startRow['start_time'])) {
+					$cancelMessages['error'][] = 'Unable to cancel that booking. It may already be processed.';
+				} else {
+					try {
+						$bookingStart = new DateTimeImmutable((string) $startRow['start_time']);
+						$cutoff = $bookingStart->modify('-2 days');
+						$now = new DateTimeImmutable('now');
+						if ($now >= $cutoff) {
+							$cancelMessages['error'][] = 'Bookings cannot be cancelled within 2 days of the start time.';
+						} else {
+							$cancelStmt = mysqli_prepare(
+								$conn,
+								"UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = ?, updated_at = NOW() WHERE booking_id = ? AND requester_id = ? AND status IN ('pending', 'approved')"
+							);
+							if ($cancelStmt) {
+								mysqli_stmt_bind_param($cancelStmt, 'iii', $currentUserId, $bookingId, $currentUserId);
+								mysqli_stmt_execute($cancelStmt);
+								if (mysqli_stmt_affected_rows($cancelStmt) === 1) {
+									logAuditEntry(
+										$conn,
+										$currentUserId,
+										'booking_cancelled',
+										'bookings',
+										$bookingId,
+										['cancelled_by' => $currentUserId]
+									);
+									$cancelMessages['success'][] = 'Booking cancelled successfully. Waitlisted requests will be notified automatically.';
+									promoteMatchingWaitlist($conn, $bookingId, $currentUserId);
+								} else {
+									$cancelMessages['error'][] = 'Unable to cancel that booking. It may already be processed.';
+								}
+								mysqli_stmt_close($cancelStmt);
+							} else {
+								$cancelMessages['error'][] = 'Unable to process cancellation right now.';
+							}
+						}
+					} catch (Exception $exception) {
+						$cancelMessages['error'][] = 'Unable to process cancellation right now.';
+					}
+				}
 			}
 		}
 	} else {
@@ -167,6 +277,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 		if ($formValues['machine_id'] === '' || !ctype_digit($formValues['machine_id']) || !isset($equipmentById[$formValues['machine_id']])) {
 			$bookingMessages['error'][] = 'Select a valid machine to continue.';
+		}
+
+		$selectedMachineId = (int) $formValues['machine_id'];
+		if ($certEligibilityError !== null) {
+			$bookingMessages['error'][] = 'Unable to verify certifications right now. Please try again later.';
+		} elseif ($selectedMachineId > 0 && empty($certifiedEquipmentIds[$selectedMachineId])) {
+			$bookingMessages['error'][] = 'You must complete all required certifications to book this machine.';
 		}
 
 		if ($formValues['date'] === '') {
@@ -349,6 +466,44 @@ if ($currentUserId !== null) {
 			}
 		}
 		mysqli_stmt_close($userBookingsStmt);
+	}
+}
+
+$flaggedBookingIds = [];
+foreach ($userBookings as $booking) {
+	if (strtolower((string) ($booking['status'] ?? '')) === 'flagged' && !empty($booking['booking_id'])) {
+		$flaggedBookingIds[] = (int) $booking['booking_id'];
+	}
+}
+
+if (!empty($flaggedBookingIds)) {
+	$checkStmt = mysqli_prepare(
+		$conn,
+		'SELECT 1 FROM audit_logs WHERE action = ? AND entity_type = ? AND entity_id = ? LIMIT 1'
+	);
+	if ($checkStmt) {
+		foreach ($flaggedBookingIds as $flaggedBookingId) {
+			$action = 'booking_flagged';
+			$entityType = 'bookings';
+			mysqli_stmt_bind_param($checkStmt, 'ssi', $action, $entityType, $flaggedBookingId);
+			mysqli_stmt_execute($checkStmt);
+			$checkResult = mysqli_stmt_get_result($checkStmt);
+			$alreadyLogged = $checkResult ? mysqli_fetch_assoc($checkResult) !== null : false;
+			if ($checkResult) {
+				mysqli_free_result($checkResult);
+			}
+			if (!$alreadyLogged) {
+				logAuditEntry(
+					$conn,
+					null,
+					'booking_flagged',
+					'bookings',
+					$flaggedBookingId,
+					['requester_id' => $currentUserId]
+				);
+			}
+		}
+		mysqli_stmt_close($checkStmt);
 	}
 }
 
@@ -761,6 +916,8 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 				align-items: center;
 				justify-content: center;
 				padding: 0.15rem 0.65rem;
+				min-width: 110px;
+				white-space: nowrap;
 				border-radius: 999px;
 				font-size: 0.8rem;
 				font-weight: 600;
@@ -789,6 +946,11 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 				color: #991b1b;
 			}
 
+			.status-over {
+				background: #e2e8f0;
+				color: #334155;
+			}
+
 			button.ghost {
 				padding: 0.35rem 0.75rem;
 				border-radius: 0.6rem;
@@ -813,6 +975,11 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 			.muted-text {
 				color: var(--muted);
 				font-size: 0.85rem;
+			}
+
+			.placeholder-dash {
+				display: block;
+				text-align: center;
 			}
 
 			.card form input,
@@ -940,6 +1107,16 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 						</svg>
 						<input type="search" placeholder="Search" />
 					</label>
+					<a class="icon-button" href="index.php" aria-label="Home">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							role="img"
+							aria-hidden="true"
+						>
+							<path d="M12 3 2 11h2v9h6v-6h4v6h6v-9h2L12 3z" />
+						</svg>
+					</a>
 					<button class="icon-button" aria-label="Notifications">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -1009,9 +1186,9 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 						<label>
 							<span>Machine</span>
 							<select name="machine_id" required>
-								<?php if (!empty($equipment)): ?>
+								<?php if (!empty($certifiedEquipment)): ?>
 									<option value="" <?php echo $formValues['machine_id'] === '' ? 'selected' : ''; ?>>Select a machine</option>
-									<?php foreach ($equipment as $machine): ?>
+									<?php foreach ($certifiedEquipment as $machine): ?>
 										<?php if (!isset($machine['id']) || $machine['id'] === null) { continue; } ?>
 										<?php $machineIdValue = (string) $machine['id']; ?>
 										<option value="<?php echo htmlspecialchars($machineIdValue, ENT_QUOTES); ?>" <?php echo $formValues['machine_id'] === $machineIdValue ? 'selected' : ''; ?>>
@@ -1019,7 +1196,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 										</option>
 									<?php endforeach; ?>
 								<?php else: ?>
-									<option value="">No machines available</option>
+									<option value="">No certified machines available</option>
 								<?php endif; ?>
 							</select>
 						</label>
@@ -1081,8 +1258,18 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 									<?php foreach ($userBookings as $booking): ?>
 										<?php
 											$status = strtolower((string) $booking['status']);
-											$statusLabel = ucfirst($status);
-											$statusClass = 'status-' . $status;
+											if ($status === 'flagged') {
+												continue;
+											}
+											$endTimestamp = strtotime($booking['end_time']);
+											$isBookingOver = $endTimestamp !== false && $endTimestamp < time() && $status === 'approved';
+											$displayStatus = $status === 'flagged' ? 'pending' : $status;
+											$statusLabel = ucfirst($displayStatus);
+											$statusClass = 'status-' . $displayStatus;
+											if ($isBookingOver) {
+												$statusLabel = 'Booking over';
+												$statusClass = 'status-over';
+											}
 											$rejectionReason = trim((string) ($booking['rejection_reason'] ?? ''));
 										?>
 										<tr>
@@ -1092,22 +1279,31 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 											</td>
 											<td>
 												<span class="status-badge <?php echo htmlspecialchars($statusClass, ENT_QUOTES); ?>"><?php echo htmlspecialchars($statusLabel, ENT_QUOTES); ?></span>
-												<?php if ($status === 'rejected'): ?>
-													<span class="rejection-reason">
-														Reason: <?php echo htmlspecialchars($rejectionReason !== '' ? $rejectionReason : 'Not provided by manager', ENT_QUOTES); ?>
-													</span>
-												<?php endif; ?>
 											</td>
 											<td class="table-actions">
-												<?php if (in_array($status, ['pending', 'approved'], true)): ?>
+												<?php if ($isBookingOver): ?>
+													<span class="muted-text placeholder-dash">—</span>
+												<?php elseif (in_array($status, ['pending', 'approved'], true)): ?>
+													<?php
+														$startTimestamp = strtotime($booking['start_time']);
+														$cancelLock = $startTimestamp !== false && time() >= ($startTimestamp - (2 * 24 * 60 * 60));
+													?>
+													<?php if ($cancelLock): ?>
+														<span class="muted-text">Cancellation locked (within 2 days)</span>
+													<?php else: ?>
 													<form method="post">
 														<input type="hidden" name="form_type" value="cancel_booking" />
 														<input type="hidden" name="booking_id" value="<?php echo (int) $booking['booking_id']; ?>" />
 														<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($cancelCsrfToken, ENT_QUOTES); ?>" />
 														<button type="submit" class="ghost danger">Cancel</button>
 													</form>
+													<?php endif; ?>
 												<?php else: ?>
-													<span class="muted-text">—</span>
+													<?php if ($status === 'rejected' && $rejectionReason !== ''): ?>
+														<span class="rejection-reason"><?php echo htmlspecialchars($rejectionReason, ENT_QUOTES); ?></span>
+													<?php else: ?>
+														<span class="muted-text placeholder-dash">—</span>
+													<?php endif; ?>
 												<?php endif; ?>
 											</td>
 										</tr>

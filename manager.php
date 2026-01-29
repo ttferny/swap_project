@@ -351,16 +351,15 @@ $logoutToken = generate_csrf_token('logout_form');
 					<h2>Approve Booking Requests</h2>
 					<p>Review pending waitlist submissions and approve equipment reservations.</p>
 				</a>
-				<div class="card">
-					<h2>Performance Insights</h2>
-					<p>Placeholder KPIs for MTTR, compliance, and utilization across all sites.</p>
-				</div>
-				<div class="card">
-					<h2>Announcements</h2>
-					<p>Space reserved for broadcast messages and policy updates for every crew.</p>
-				</div>
+				<a class="card" href="incident-reports.php">
+					<h2>Safety Incidents</h2>
+					<p>Open the incident log to review every submitted report and its status.</p>
+				</a>
+				<a class="card" href="analytics-dashboard.php">
+					<h2>Analytics Dashboard</h2>
+					<p>Track equipment utilisation and safety trends in one place.</p>
+				</a>
 			</section>
-			<a class="back-link" href="index.php">Return to main dashboard</a>
 		</main>
 	</body>
 </html>

@@ -783,6 +783,11 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 						</svg>
 						<input type="search" placeholder="Search" />
 					</label>
+					<a class="icon-button" href="manager.php" aria-label="Home">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-hidden="true">
+							<path d="M12 3 2 11h2v9h6v-6h4v6h6v-9h2L12 3z" />
+						</svg>
+					</a>
 					<button class="icon-button" aria-label="Notifications">
 						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-hidden="true">
 							<path d="M12 3a6 6 0 0 0-6 6v3.6l-1.6 2.7A1 1 0 0 0 5.3 17H18.7a1 1 0 0 0 .9-1.7L18 12.6V9a6 6 0 0 0-6-6zm0 19a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3z" />
