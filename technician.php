@@ -134,7 +134,8 @@ function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 	];
 }
 
-$currentUser = require_login(['technician', 'manager', 'admin']);
+$currentUser = enforce_capability($conn, 'technician.console');
+$dashboardHref = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
@@ -1482,7 +1483,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 					<?php endif; ?>
 				</div>
 			</section>
-			<a class="back-link" href="index.php">Return to main dashboard</a>
+			<a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">Return to your dashboard</a>
 		</main>
 	</body>
 </html>

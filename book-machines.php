@@ -7,6 +7,14 @@ require_once __DIR__ . '/booking-utils.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/audit.php';
 
+if (function_exists('register_performance_budget')) {
+	register_performance_budget(1000.0, 2000.0, 'book-machines.php');
+}
+
+$currentUser = enforce_capability($conn, 'portal.booking');
+$currentUserId = (int) ($currentUser['user_id'] ?? 0);
+$currentUserRole = strtolower((string) ($currentUser['role_name'] ?? ''));
+
 $bookingMessages = ['success' => [], 'error' => []];
 $cancelMessages = ['success' => [], 'error' => []];
 $formValues = [
@@ -29,14 +37,11 @@ $maintenanceMachines = [];
 $equipmentOptionsError = null;
 $availabilityCalendarError = null;
 $maintenanceMachinesError = null;
-$currentUserId = $_SESSION['user']['user_id'] ?? null;
-$currentUserRole = $_SESSION['user']['role'] ?? '';
-
 $machineCsrfToken = generate_csrf_token('book_machine_submit');
 $cancelCsrfToken = generate_csrf_token('book_machine_cancel');
 
 try {
-$equipmentSql = "SELECT equipment_id, name, location, category FROM equipment WHERE status = 'active' ORDER BY name ASC";
+$equipmentSql = "SELECT equipment_id, name, location, category, risk_level FROM equipment WHERE status = 'active' ORDER BY name ASC";
 $equipmentResult = mysqli_query($conn, $equipmentSql);
 if ($equipmentResult === false) {
 $equipmentOptionsError = 'Unable to load equipment list right now.';
@@ -44,10 +49,11 @@ $equipmentOptionsError = 'Unable to load equipment list right now.';
 $equipmentData = [];
 while ($row = mysqli_fetch_assoc($equipmentResult)) {
 $equipmentData[] = [
-'id' => (int) ($row['equipment_id'] ?? 0),
-'name' => trim((string) ($row['name'] ?? '')),
-'location' => trim((string) ($row['location'] ?? 'Unknown location')),
-'category' => trim((string) ($row['category'] ?? 'General equipment')),
+	'id' => (int) ($row['equipment_id'] ?? 0),
+	'name' => trim((string) ($row['name'] ?? '')),
+	'location' => trim((string) ($row['location'] ?? 'Unknown location')),
+	'category' => trim((string) ($row['category'] ?? 'General equipment')),
+	'risk_level' => strtolower((string) ($row['risk_level'] ?? 'low')),
 ];
 }
 mysqli_free_result($equipmentResult);
@@ -59,9 +65,13 @@ $equipmentOptionsError = 'Unable to load equipment list right now.';
 
 $equipmentById = [];
 if (!empty($equipmentData)) {
-foreach ($equipmentData as $equipment) {
-$equipmentById[(string) $equipment['id']] = $equipment;
-}
+	foreach ($equipmentData as $equipment) {
+		$equipmentId = (int) ($equipment['id'] ?? 0);
+		if ($equipmentId <= 0) {
+			continue;
+		}
+		$equipmentById[$equipmentId] = $equipment;
+	}
 }
 
 $userIsAdmin = in_array($currentUserRole, ['admin', 'manager', 'technician'], true);
@@ -92,33 +102,208 @@ record_system_error($accessException, ['route' => 'book-machines', 'context' => 
 $limitEquipmentScope = true;
 }
 
-$certifiedEquipmentIds = [];
 $certEligibilityError = null;
-if ($currentUserId !== null) {
-try {
-$certSql = "SELECT ce.equipment_id FROM equipment_certifications ce INNER JOIN certifications c ON c.certification_id = ce.certification_id INNER JOIN user_certifications uc ON uc.certification_id = c.certification_id WHERE uc.user_id = ? AND uc.status = 'completed'";
-$certStmt = mysqli_prepare($conn, $certSql);
-if ($certStmt !== false) {
-mysqli_stmt_bind_param($certStmt, 'i', $currentUserId);
-mysqli_stmt_execute($certStmt);
-$result = mysqli_stmt_get_result($certStmt);
-while ($row = $result ? mysqli_fetch_assoc($result) : null) {
-$equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
-if ($equipmentId > 0) {
-$certifiedEquipmentIds[$equipmentId] = true;
-}
-}
-if ($result) {
-mysqli_free_result($result);
-}
-mysqli_stmt_close($certStmt);
-}
-} catch (Throwable $certException) {
-record_system_error($certException, ['route' => 'book-machines', 'context' => 'certifications']);
-$certEligibilityError = 'Unable to verify certifications right now.';
-}
+$certNameLookup = [];
+$certCatalogResult = mysqli_query($conn, 'SELECT cert_id, name FROM certifications');
+if ($certCatalogResult instanceof mysqli_result) {
+	while ($row = mysqli_fetch_assoc($certCatalogResult)) {
+		$certId = isset($row['cert_id']) ? (int) $row['cert_id'] : 0;
+		if ($certId <= 0) {
+			continue;
+		}
+		$certNameLookup[$certId] = trim((string) ($row['name'] ?? ('Certification #' . $certId)));
+	}
+	mysqli_free_result($certCatalogResult);
 }
 
+$equipmentCertRequirements = [];
+$certRequirementResult = mysqli_query($conn, 'SELECT equipment_id, cert_id FROM equipment_required_certs');
+if ($certRequirementResult instanceof mysqli_result) {
+	while ($row = mysqli_fetch_assoc($certRequirementResult)) {
+		$equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
+		$certId = isset($row['cert_id']) ? (int) $row['cert_id'] : 0;
+		if ($equipmentId <= 0 || $certId <= 0) {
+			continue;
+		}
+		if (!isset($equipmentCertRequirements[$equipmentId])) {
+			$equipmentCertRequirements[$equipmentId] = [];
+		}
+		$equipmentCertRequirements[$equipmentId][$certId] = true;
+	}
+	mysqli_free_result($certRequirementResult);
+}
+
+$userCertificationSnapshot = [];
+$userCompletedCerts = [];
+$certExpiryWarnings = [];
+$expiredCertifications = [];
+$certExpiryThresholdTs = (new DateTimeImmutable('now'))->modify('+14 days')->getTimestamp();
+$nowTs = time();
+
+if ($currentUserId !== null) {
+	try {
+		$userCertStmt = mysqli_prepare(
+			$conn,
+			'SELECT cert_id, status, expires_at FROM user_certifications WHERE user_id = ?'
+		);
+		if ($userCertStmt !== false) {
+			mysqli_stmt_bind_param($userCertStmt, 'i', $currentUserId);
+			mysqli_stmt_execute($userCertStmt);
+			$result = mysqli_stmt_get_result($userCertStmt);
+			if ($result) {
+				while ($row = mysqli_fetch_assoc($result)) {
+					$certId = isset($row['cert_id']) ? (int) $row['cert_id'] : 0;
+					if ($certId <= 0) {
+						continue;
+					}
+					$status = strtolower((string) ($row['status'] ?? ''));
+					$expiresAt = trim((string) ($row['expires_at'] ?? ''));
+					$expiresTs = $expiresAt !== '' ? strtotime($expiresAt) : null;
+					$userCertificationSnapshot[] = [
+						'cert_id' => $certId,
+						'status' => $status,
+						'expires_at' => $expiresAt,
+					];
+					if ($status === 'completed' && ($expiresTs === null || $expiresTs >= $nowTs)) {
+						$userCompletedCerts[$certId] = [
+							'expires_at' => $expiresAt,
+							'expires_ts' => $expiresTs,
+						];
+						if ($expiresTs !== null && $expiresTs <= $certExpiryThresholdTs) {
+							$certExpiryWarnings[$certId] = $expiresAt;
+						}
+					} elseif ($status === 'completed' && $expiresTs !== null && $expiresTs < $nowTs) {
+						$expiredCertifications[$certId] = $expiresAt;
+					}
+				}
+				mysqli_free_result($result);
+			}
+			mysqli_stmt_close($userCertStmt);
+		}
+	} catch (Throwable $certException) {
+		record_system_error($certException, ['route' => 'book-machines', 'context' => 'certifications']);
+		$certEligibilityError = 'Unable to verify certifications right now.';
+	}
+}
+
+$allEquipmentById = $equipmentById;
+$roleRankings = [
+	'student' => 1,
+	'staff' => 2,
+	'technician' => 3,
+	'instructor' => 3,
+	'manager' => 4,
+	'admin' => 5,
+];
+$riskRequirementMap = [
+	'low' => 1,
+	'medium' => 2,
+	'high' => 4,
+];
+
+$resolveCertName = static function (int $certId) use ($certNameLookup): string {
+	return $certNameLookup[$certId] ?? ('Certification #' . $certId);
+};
+
+$userHasRiskPermission = static function (?string $riskLevel) use ($riskRequirementMap, $roleRankings, $currentUserRole): bool {
+	$normalized = strtolower((string) $riskLevel);
+	$requiredRank = $riskRequirementMap[$normalized] ?? 1;
+	$userRank = $roleRankings[strtolower((string) $currentUserRole)] ?? 0;
+	return $userRank >= $requiredRank;
+};
+
+$evaluateEquipmentEligibility = static function (int $equipmentId, ?DateTimeImmutable $bookingStart) use (
+	$allEquipmentById,
+	$limitEquipmentScope,
+	$userEquipmentAccessMap,
+	$userHasRiskPermission,
+	$equipmentCertRequirements,
+	$userCompletedCerts,
+	$resolveCertName
+): array {
+	$equipment = $allEquipmentById[$equipmentId] ?? null;
+	if ($equipment === null) {
+		return ['allowed' => false, 'reason' => 'Selected machine is not available.'];
+	}
+	if ($limitEquipmentScope && !isset($userEquipmentAccessMap[$equipmentId])) {
+		return ['allowed' => false, 'reason' => 'This machine is not assigned to your clearance list.'];
+	}
+	$riskLevel = strtolower((string) ($equipment['risk_level'] ?? 'low'));
+	if (!$userHasRiskPermission($riskLevel)) {
+		$message = $riskLevel === 'high'
+			? 'Manager authorisation is required before booking this machine.'
+			: 'Instructor approval is required before booking this machine.';
+		return ['allowed' => false, 'reason' => $message];
+	}
+	$requirements = $equipmentCertRequirements[$equipmentId] ?? [];
+	if (!empty($requirements)) {
+		foreach ($requirements as $certId => $_) {
+			if (!isset($userCompletedCerts[$certId])) {
+				return ['allowed' => false, 'reason' => 'Complete ' . $resolveCertName($certId) . ' before booking this machine.'];
+			}
+			if ($bookingStart !== null) {
+				$expiresTs = $userCompletedCerts[$certId]['expires_ts'] ?? null;
+				if ($expiresTs !== null && $expiresTs < $bookingStart->getTimestamp()) {
+					return ['allowed' => false, 'reason' => $resolveCertName($certId) . ' expires before this booking starts.'];
+				}
+			}
+		}
+	}
+	return ['allowed' => true, 'reason' => null];
+};
+
+$buildEquipmentAccessPayload = static function (int $equipmentId, array $extra) use (
+	$currentUserRole,
+	$equipmentCertRequirements,
+	$allEquipmentById,
+	$userCertificationSnapshot
+): array {
+	$payload = $extra;
+	$payload['user_role'] = $currentUserRole;
+	$equipmentMeta = $allEquipmentById[$equipmentId] ?? [];
+	$payload['equipment_name'] = $equipmentMeta['name'] ?? null;
+	$payload['permission_level'] = $equipmentMeta['risk_level'] ?? null;
+	$payload['required_certifications'] = array_keys($equipmentCertRequirements[$equipmentId] ?? []);
+	$payload['certification_snapshot'] = $userCertificationSnapshot;
+	return $payload;
+};
+
+$allowedEquipmentIds = [];
+foreach ($allEquipmentById as $equipmentId => $equipment) {
+	$eligibility = $evaluateEquipmentEligibility($equipmentId, null);
+	if ($eligibility['allowed']) {
+		$allowedEquipmentIds[$equipmentId] = true;
+	}
+}
+
+$equipmentData = [];
+$equipmentById = [];
+foreach ($allEquipmentById as $equipmentId => $equipment) {
+	if (!isset($allowedEquipmentIds[$equipmentId])) {
+		continue;
+	}
+	$equipmentData[] = $equipment;
+	$equipmentById[$equipmentId] = $equipment;
+}
+
+$visibleEquipmentIds = $allowedEquipmentIds;
+
+$eligibilityNoticeMessages = [];
+foreach ($expiredCertifications as $certId => $expiredAt) {
+	$label = $resolveCertName($certId);
+	$dateLabel = $expiredAt !== '' ? date('j M Y', strtotime($expiredAt)) : 'recently';
+	$eligibilityNoticeMessages[] = $label . ' expired on ' . $dateLabel . '. Renew it to regain booking access.';
+}
+foreach ($certExpiryWarnings as $certId => $expiresAt) {
+	$label = $resolveCertName($certId);
+	$eligibilityNoticeMessages[] = $label . ' expires on ' . date('j M Y', strtotime($expiresAt)) . '. Renew soon to avoid losing access.';
+}
+
+if ($equipmentOptionsError === null && empty($equipmentData)) {
+	$eligibilityNoticeMessages[] = 'No machines are available under your current permissions. Complete the required safety training or request higher-level approval.';
+}
+
+$formType = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $formType = $_POST['form_type'] ?? 'submit_booking';
 
@@ -128,7 +313,7 @@ $cancelCsrfInput = (string) ($_POST['csrf_token'] ?? '');
 
 if (!validate_csrf_token('book_machine_cancel', $cancelCsrfInput)) {
 $cancelMessages['error'][] = 'Your session expired. Please reload the page and try again.';
-} elseif ($currentUserId === null) {
+} elseif ($currentUserId <= 0) {
 $cancelMessages['error'][] = 'Please sign in before cancelling a booking.';
 } elseif ($bookingIdRaw === '' || !ctype_digit($bookingIdRaw)) {
 $cancelMessages['error'][] = 'Invalid booking reference.';
@@ -221,28 +406,46 @@ $formValues['time'] = trim((string) ($_POST['booking_time'] ?? ''));
 $formValues['duration'] = trim((string) ($_POST['booking_duration'] ?? $formValues['duration']));
 $formValues['notes'] = trim((string) ($_POST['booking_notes'] ?? ''));
 $bookingCsrfInput = (string) ($_POST['csrf_token'] ?? '');
+$selectedMachineEligibility = null;
 
 if (!validate_csrf_token('book_machine_submit', $bookingCsrfInput)) {
 $bookingMessages['error'][] = 'Your session expired. Please reload the page and try again.';
 }
 
-if ($currentUserId === null) {
+if ($currentUserId <= 0) {
 $bookingMessages['error'][] = 'Please sign in before sending a booking request.';
 }
 
-if ($formValues['machine_id'] === '' || !ctype_digit($formValues['machine_id']) || !isset($equipmentById[$formValues['machine_id']])) {
-$bookingMessages['error'][] = 'Select a valid machine to continue.';
+if ($formValues['machine_id'] === '' || !ctype_digit($formValues['machine_id'])) {
+	$bookingMessages['error'][] = 'Select a valid machine to continue.';
 }
 
 $selectedMachineId = ctype_digit($formValues['machine_id']) ? (int) $formValues['machine_id'] : 0;
+if ($selectedMachineId <= 0 || !isset($equipmentById[$selectedMachineId])) {
+	$bookingMessages['error'][] = 'Selected machine is not available for your account.';
+}
 if ($selectedMachineId > 0 && $limitEquipmentScope && !isset($userEquipmentAccessMap[$selectedMachineId])) {
 $bookingMessages['error'][] = 'You do not have permission to book that machine.';
 }
 
 if ($certEligibilityError !== null) {
 $bookingMessages['error'][] = 'Unable to verify certifications right now. Please try again later.';
-} elseif ($selectedMachineId > 0 && empty($certifiedEquipmentIds[$selectedMachineId])) {
-$bookingMessages['error'][] = 'You must complete all required certifications to book this machine.';
+} elseif ($selectedMachineId > 0) {
+	$selectedMachineEligibility = $evaluateEquipmentEligibility($selectedMachineId, null);
+	if (!$selectedMachineEligibility['allowed']) {
+		$bookingMessages['error'][] = $selectedMachineEligibility['reason'];
+		log_audit_event(
+			$conn,
+			$currentUserId,
+			'equipment_access_blocked',
+			'equipment',
+			$selectedMachineId,
+			$buildEquipmentAccessPayload($selectedMachineId, [
+				'reason' => $selectedMachineEligibility['reason'],
+				'stage' => 'pre_submission',
+			])
+		);
+	}
 }
 
 if ($formValues['date'] === '') {
@@ -287,164 +490,192 @@ $bookingEnd = $bookingStart->modify('+' . $durationMinutes . ' minutes');
 }
 
 if (empty($bookingMessages['error']) && $bookingStart !== null && $bookingEnd !== null) {
-$equipmentIdInt = (int) $formValues['machine_id'];
-$desiredStartStr = $bookingStart->format('Y-m-d H:i:s');
-$desiredEndStr = $bookingEnd->format('Y-m-d H:i:s');
-$noteParam = $formValues['notes'] === '' ? 'Booking submitted via portal.' : $formValues['notes'];
-$noteParam = function_exists('mb_substr') ? mb_substr($noteParam, 0, 255) : substr($noteParam, 0, 255);
-$waitlistNote = $formValues['notes'] === '' ? null : (function_exists('mb_substr') ? mb_substr($formValues['notes'], 0, 255) : substr($formValues['notes'], 0, 255));
+	$equipmentIdInt = (int) $formValues['machine_id'];
+	$desiredStartStr = $bookingStart->format('Y-m-d H:i:s');
+	$desiredEndStr = $bookingEnd->format('Y-m-d H:i:s');
+	$noteParam = $formValues['notes'] === '' ? 'Booking submitted via portal.' : $formValues['notes'];
+	$noteParam = function_exists('mb_substr') ? mb_substr($noteParam, 0, 255) : substr($noteParam, 0, 255);
+	$waitlistNote = $formValues['notes'] === '' ? null : (function_exists('mb_substr') ? mb_substr($formValues['notes'], 0, 255) : substr($formValues['notes'], 0, 255));
+	$bookingDeadlineTs = APP_REQUEST_START + 0.95;
 
-$transactionStarted = mysqli_begin_transaction($conn, MYSQLI_TRANS_START_READ_WRITE);
-if ($transactionStarted === false) {
-$bookingMessages['error'][] = 'We could not secure that time slot. Please try again or contact support.';
-} else {
-$lockSql = "SELECT booking_id FROM bookings WHERE equipment_id = ? AND status IN ('pending', 'approved') AND start_time < ? AND end_time > ? FOR UPDATE";
-$lockStmt = mysqli_prepare($conn, $lockSql);
+	$resetRequestForm = static function () use (&$formValues): void {
+		$formValues = [
+			'machine_id' => '',
+			'date' => '',
+			'time' => '',
+			'duration' => '60',
+			'notes' => '',
+		];
+	};
 
-if ($lockStmt === false) {
-mysqli_rollback($conn);
-$bookingMessages['error'][] = 'Could not verify equipment availability.';
-} else {
-mysqli_stmt_bind_param($lockStmt, 'iss', $equipmentIdInt, $desiredEndStr, $desiredStartStr);
-mysqli_stmt_execute($lockStmt);
-mysqli_stmt_store_result($lockStmt);
-$hasConflict = mysqli_stmt_num_rows($lockStmt) > 0;
-mysqli_stmt_close($lockStmt);
+	$enqueueWaitlist = static function (string $reasonCode) use (
+		$conn,
+		$equipmentIdInt,
+		$currentUserId,
+		$desiredStartStr,
+		$desiredEndStr,
+		$waitlistNote,
+		&$bookingMessages,
+		$resetRequestForm
+	): bool {
+		$waitlistSql = "INSERT INTO booking_waitlist (equipment_id, user_id, desired_start, desired_end, note) VALUES (?, ?, ?, ?, NULLIF(?, ''))";
+		$waitlistStmt = mysqli_prepare($conn, $waitlistSql);
+		if ($waitlistStmt === false) {
+			$bookingMessages['error'][] = 'Unable to add you to the waitlist right now.';
+			return false;
+		}
+		$waitlistNoteParam = $waitlistNote ?? '';
+		mysqli_stmt_bind_param(
+			$waitlistStmt,
+			'iisss',
+			$equipmentIdInt,
+			$currentUserId,
+			$desiredStartStr,
+			$desiredEndStr,
+			$waitlistNoteParam
+		);
+		$messages = [
+			'conflict' => 'That slot is currently booked. Your request is pending on the waitlist, and we will notify you if it opens up.',
+			'lock_timeout' => 'Another booking is being confirmed on this machine. We added you to the waitlist and will notify you if the slot frees up.',
+			'sla_deadline' => 'We could not confirm within the 1-second SLA, so your request is on the waitlist and will auto-promote if the slot stays free.',
+		];
+		if (mysqli_stmt_execute($waitlistStmt)) {
+			$waitlistId = mysqli_insert_id($conn) ?: null;
+			logAuditEntry(
+				$conn,
+				$currentUserId,
+				'waitlist_created',
+				'booking_waitlist',
+				$waitlistId,
+				[
+					'equipment_id' => $equipmentIdInt,
+					'from_booking_id' => null,
+					'desired_start' => $desiredStartStr,
+					'desired_end' => $desiredEndStr,
+					'waitlist_reason' => $reasonCode,
+				]
+			);
+			if ($equipmentIdInt > 0 && $waitlistId !== null) {
+				log_audit_event(
+					$conn,
+					$currentUserId,
+					'equipment_waitlist_requested',
+					'equipment',
+					$equipmentIdInt,
+					[
+						'waitlist_id' => $waitlistId,
+						'desired_start' => $desiredStartStr,
+						'desired_end' => $desiredEndStr,
+						'source' => 'booking_form',
+						'waitlist_reason' => $reasonCode,
+					]
+				);
+			}
+			$bookingMessages['success'][] = $messages[$reasonCode] ?? 'Your request has been waitlisted and will auto-promote when available.';
+			$resetRequestForm();
+			mysqli_stmt_close($waitlistStmt);
+			return true;
+		}
+		$bookingMessages['error'][] = 'We could not add you to the waitlist. Please try again.';
+		mysqli_stmt_close($waitlistStmt);
+		return false;
+	};
 
-if ($hasConflict) {
-mysqli_rollback($conn);
+	$shouldAttemptImmediateBooking = true;
+	if (microtime(true) >= $bookingDeadlineTs) {
+		$shouldAttemptImmediateBooking = false;
+		$enqueueWaitlist('sla_deadline');
+	}
 
-$waitlistSql = "INSERT INTO booking_waitlist (equipment_id, user_id, desired_start, desired_end, note) VALUES (?, ?, ?, ?, NULLIF(?, ''))";
-$waitlistStmt = mysqli_prepare($conn, $waitlistSql);
+	$lockAcquired = false;
+	if ($shouldAttemptImmediateBooking) {
+		$lockAcquired = acquire_equipment_booking_lock($conn, $equipmentIdInt, 0.95);
+		if (!$lockAcquired) {
+			$shouldAttemptImmediateBooking = false;
+			$enqueueWaitlist('lock_timeout');
+		}
+	}
 
-if ($waitlistStmt === false) {
-$bookingMessages['error'][] = 'Unable to add you to the waitlist right now.';
-} else {
-$waitlistNoteParam = $waitlistNote ?? '';
-mysqli_stmt_bind_param(
-$waitlistStmt,
-'iisss',
-$equipmentIdInt,
-$currentUserId,
-$desiredStartStr,
-$desiredEndStr,
-$waitlistNoteParam
-);
-
-if (mysqli_stmt_execute($waitlistStmt)) {
-$waitlistId = mysqli_insert_id($conn) ?: null;
-logAuditEntry(
-$conn,
-$currentUserId,
-'waitlist_created',
-'booking_waitlist',
-$waitlistId,
-[
-'equipment_id' => $equipmentIdInt,
-'from_booking_id' => null,
-'desired_start' => $desiredStartStr,
-'desired_end' => $desiredEndStr,
-]
-);
-
-if ($equipmentIdInt > 0 && $waitlistId !== null) {
-log_audit_event(
-$conn,
-$currentUserId,
-'equipment_waitlist_requested',
-'equipment',
-$equipmentIdInt,
-[
-'waitlist_id' => $waitlistId,
-'desired_start' => $desiredStartStr,
-'desired_end' => $desiredEndStr,
-'source' => 'booking_form',
-]
-);
-}
-
-$bookingMessages['success'][] = 'That slot is currently booked. Your request is pending on the waitlist, and we will notify you if it opens up.';
-$formValues = [
-'machine_id' => '',
-'date' => '',
-'time' => '',
-'duration' => '60',
-'notes' => '',
-];
-} else {
-$bookingMessages['error'][] = 'We could not add you to the waitlist. Please try again.';
-}
-
-mysqli_stmt_close($waitlistStmt);
-}
-} else {
-$bookingSql = "INSERT INTO bookings (equipment_id, requester_id, start_time, end_time, purpose, status, requires_approval) VALUES (?, ?, ?, ?, ?, 'pending', 1)";
-$bookingStmt = mysqli_prepare($conn, $bookingSql);
-
-if ($bookingStmt === false) {
-mysqli_rollback($conn);
-$bookingMessages['error'][] = 'Unable to submit your booking. Please try again shortly.';
-} else {
-mysqli_stmt_bind_param(
-$bookingStmt,
-'iisss',
-$equipmentIdInt,
-$currentUserId,
-$desiredStartStr,
-$desiredEndStr,
-$noteParam
-);
-
-if (mysqli_stmt_execute($bookingStmt)) {
-$newBookingId = mysqli_insert_id($conn) ?: null;
-mysqli_commit($conn);
-logAuditEntry(
-$conn,
-$currentUserId,
-'booking_created',
-'bookings',
-$newBookingId,
-[
-'equipment_id' => $equipmentIdInt,
-'purpose' => $noteParam,
-'origin' => 'portal_booking_form',
-]
-);
-
-if ($equipmentIdInt > 0 && $newBookingId !== null) {
-log_audit_event(
-$conn,
-$currentUserId,
-'equipment_booking_requested',
-'equipment',
-$equipmentIdInt,
-[
-'booking_id' => $newBookingId,
-'window_start' => $desiredStartStr,
-'window_end' => $desiredEndStr,
-'purpose' => $noteParam,
-]
-);
-}
-
-$bookingMessages['success'][] = 'Booking submitted and awaiting manager approval.';
-$formValues = [
-'machine_id' => '',
-'date' => '',
-'time' => '',
-'duration' => '60',
-'notes' => '',
-];
-} else {
-mysqli_rollback($conn);
-$bookingMessages['error'][] = 'We could not save your booking request. Please try again.';
-}
-
-mysqli_stmt_close($bookingStmt);
-}
-}
-}
-}
+	if ($shouldAttemptImmediateBooking && $lockAcquired) {
+		try {
+			if (!mysqli_begin_transaction($conn, MYSQLI_TRANS_START_READ_WRITE)) {
+				$bookingMessages['error'][] = 'We could not secure that time slot. Please try again or contact support.';
+			} else {
+				$lockSql = "SELECT booking_id FROM bookings WHERE equipment_id = ? AND status IN ('pending', 'approved') AND start_time < ? AND end_time > ? FOR UPDATE";
+				$lockStmt = mysqli_prepare($conn, $lockSql);
+				if ($lockStmt === false) {
+					mysqli_rollback($conn);
+					$bookingMessages['error'][] = 'Could not verify equipment availability.';
+				} else {
+					mysqli_stmt_bind_param($lockStmt, 'iss', $equipmentIdInt, $desiredEndStr, $desiredStartStr);
+					mysqli_stmt_execute($lockStmt);
+					mysqli_stmt_store_result($lockStmt);
+					$hasConflict = mysqli_stmt_num_rows($lockStmt) > 0;
+					mysqli_stmt_close($lockStmt);
+					if ($hasConflict) {
+						mysqli_rollback($conn);
+						$enqueueWaitlist('conflict');
+					} else {
+						$bookingSql = "INSERT INTO bookings (equipment_id, requester_id, start_time, end_time, purpose, status, requires_approval) VALUES (?, ?, ?, ?, ?, 'pending', 1)";
+						$bookingStmt = mysqli_prepare($conn, $bookingSql);
+						if ($bookingStmt === false) {
+							mysqli_rollback($conn);
+							$bookingMessages['error'][] = 'Unable to submit your booking. Please try again shortly.';
+						} else {
+							mysqli_stmt_bind_param(
+								$bookingStmt,
+								'iisss',
+								$equipmentIdInt,
+								$currentUserId,
+								$desiredStartStr,
+								$desiredEndStr,
+								$noteParam
+							);
+							if (mysqli_stmt_execute($bookingStmt)) {
+								$newBookingId = mysqli_insert_id($conn) ?: null;
+								mysqli_commit($conn);
+								logAuditEntry(
+									$conn,
+									$currentUserId,
+									'booking_created',
+									'bookings',
+									$newBookingId,
+									[
+										'equipment_id' => $equipmentIdInt,
+										'purpose' => $noteParam,
+										'origin' => 'portal_booking_form',
+									]
+								);
+								if ($equipmentIdInt > 0 && $newBookingId !== null) {
+									log_audit_event(
+										$conn,
+										$currentUserId,
+										'equipment_booking_requested',
+										'equipment',
+										$equipmentIdInt,
+										[
+											'booking_id' => $newBookingId,
+											'window_start' => $desiredStartStr,
+											'window_end' => $desiredEndStr,
+											'purpose' => $noteParam,
+										],
+									);
+								}
+								$bookingMessages['success'][] = 'Booking submitted and awaiting manager approval.';
+								$resetRequestForm();
+							} else {
+								mysqli_rollback($conn);
+								$bookingMessages['error'][] = 'We could not save your booking request. Please try again.';
+							}
+							mysqli_stmt_close($bookingStmt);
+						}
+					}
+				}
+			}
+		} finally {
+			release_equipment_booking_lock($conn, $equipmentIdInt);
+		}
+	}
 }
 }
 
@@ -455,6 +686,25 @@ flagBookingIfNecessary($conn, $currentUserId, $formValues['machine_id'] !== '' ?
 record_system_error($flagException, ['route' => 'book-machines', 'context' => 'flagging']);
 }
 }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $formType === 'submit_booking') {
+	$bookingLatencyMs = (microtime(true) - APP_REQUEST_START) * 1000;
+	$roundedLatency = round($bookingLatencyMs, 2);
+	if (!headers_sent()) {
+		header('X-Booking-Latency: ' . $roundedLatency . 'ms');
+	}
+	if ($bookingLatencyMs > 1000) {
+		record_system_error(
+			new RuntimeException('Booking confirmation exceeded 1-second SLA'),
+			[
+				'route' => 'book-machines',
+				'latency_ms' => $roundedLatency,
+				'user_id' => $currentUserId,
+				'equipment_id' => $formValues['machine_id'] !== '' ? (int) $formValues['machine_id'] : null,
+			]
+		);
+	}
 }
 
 try {
@@ -474,7 +724,10 @@ continue;
 }
 
 if ($limitEquipmentScope && ($equipmentId <= 0 || !isset($userEquipmentAccessMap[$equipmentId]))) {
-continue;
+	continue;
+}
+if ($equipmentId <= 0 || !isset($visibleEquipmentIds[$equipmentId])) {
+	continue;
 }
 
 $dateKey = date('Y-m-d', strtotime($startTime));
@@ -506,7 +759,10 @@ while ($row = mysqli_fetch_assoc($maintenanceResult)) {
 $equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
 
 if ($limitEquipmentScope && ($equipmentId <= 0 || !isset($userEquipmentAccessMap[$equipmentId]))) {
-continue;
+	continue;
+}
+if ($equipmentId <= 0 || !isset($visibleEquipmentIds[$equipmentId])) {
+	continue;
 }
 
 $equipmentName = trim((string) ($row['equipment_name'] ?? ''));
@@ -526,7 +782,7 @@ $maintenanceMachinesError = 'Unable to load maintenance status right now.';
 
 function flagBookingIfNecessary(mysqli $conn, ?int $currentUserId, ?int $equipmentId): void
 {
-if ($currentUserId === null) {
+if ($currentUserId <= 0) {
 return;
 }
 
@@ -753,6 +1009,39 @@ $waitlistId,
 'moved_booking_id' => $newBookingId,
 ]
 );
+}
+
+function acquire_equipment_booking_lock(mysqli $conn, int $equipmentId, float $timeoutSeconds = 0.95): bool
+{
+	if ($equipmentId <= 0) {
+		return false;
+	}
+	$lockName = sprintf('booking_equipment_%d', $equipmentId);
+	$lockStmt = mysqli_prepare($conn, 'SELECT GET_LOCK(?, ?)');
+	if ($lockStmt === false) {
+		return false;
+	}
+	mysqli_stmt_bind_param($lockStmt, 'sd', $lockName, $timeoutSeconds);
+	mysqli_stmt_execute($lockStmt);
+	mysqli_stmt_bind_result($lockStmt, $lockResult);
+	mysqli_stmt_fetch($lockStmt);
+	mysqli_stmt_close($lockStmt);
+	return (int) ($lockResult ?? 0) === 1;
+}
+
+function release_equipment_booking_lock(mysqli $conn, int $equipmentId): void
+{
+	if ($equipmentId <= 0) {
+		return;
+	}
+	$lockName = sprintf('booking_equipment_%d', $equipmentId);
+	$releaseStmt = mysqli_prepare($conn, 'SELECT RELEASE_LOCK(?)');
+	if ($releaseStmt === false) {
+		return;
+	}
+	mysqli_stmt_bind_param($releaseStmt, 's', $lockName);
+	mysqli_stmt_execute($releaseStmt);
+	mysqli_stmt_close($releaseStmt);
 }
 ?>
 <!DOCTYPE html>
@@ -1015,6 +1304,12 @@ color: #c53030;
 border: 1px solid rgba(229, 62, 62, 0.2);
 }
 
+.alert-warning {
+background: rgba(251, 191, 36, 0.18);
+color: #b45309;
+border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
 .badge {
 display: inline-flex;
 align-items: center;
@@ -1116,6 +1411,12 @@ time and get instant feedback on availability, approvals, and maintenance confli
 </p>
 </section>
 
+<?php if (!empty($eligibilityNoticeMessages)): ?>
+	<?php foreach ($eligibilityNoticeMessages as $notice): ?>
+		<div class="alert alert-warning"><?= htmlspecialchars($notice) ?></div>
+	<?php endforeach; ?>
+<?php endif; ?>
+
 <?php if (!empty($bookingMessages['success'])): ?>
 <?php foreach ($bookingMessages['success'] as $message): ?>
 <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
@@ -1157,7 +1458,7 @@ time and get instant feedback on availability, approvals, and maintenance confli
 value="<?= htmlspecialchars((string) $machine['id']) ?>"
 <?php if ($formValues['machine_id'] === (string) $machine['id']): ?>selected<?php endif; ?>
 >
-<?= htmlspecialchars($machine['name']) ?>  <?= htmlspecialchars($machine['location']) ?>
+<?= htmlspecialchars($machine['name']) ?> • <?= htmlspecialchars(ucfirst($machine['risk_level'] ?? 'low')) ?> risk @ <?= htmlspecialchars($machine['location']) ?>
 </option>
 <?php endforeach; ?>
 <?php else: ?>

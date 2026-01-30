@@ -4,7 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = enforce_sensitive_route_guard($conn);
+$currentUser = enforce_capability($conn, 'admin.core');
+$dashboardHref = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
@@ -414,7 +415,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			<div class="callout">
 				<strong>Full-system authority:</strong> You’re signed in as an administrator, so every module and configuration endpoint is available across the platform. Use this hub as your starting point and jump directly into any workspace above.
 			</div>
-			<a class="back-link" href="index.php">Return to learner dashboard</a>
+			<a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">Return to your dashboard</a>
 		</main>
 	</body>
 </html>

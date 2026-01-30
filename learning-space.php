@@ -4,7 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = require_login();
+$currentUser = enforce_capability($conn, 'portal.learning');
+$dashboardHref = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Student';
@@ -1515,7 +1516,7 @@ if ($certsResult === false) {
 						</svg>
 						<input type="search" name="q" placeholder="Search materials" value="<?php echo htmlspecialchars($materialSearch, ENT_QUOTES); ?>" />
 					</form>
-					<a class="icon-button" href="index.php" aria-label="Home">
+					<a class="icon-button" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>" aria-label="Home">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 24 24"

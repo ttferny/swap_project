@@ -4,7 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = enforce_sensitive_route_guard($conn);
+$currentUser = enforce_capability($conn, 'admin.core');
+$dashboardHref = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
 if ($userFullName === '') {
     $userFullName = 'Administrator';
@@ -521,7 +522,7 @@ if ($result = mysqli_query($conn, $maintenanceSql)) {
                 </div>
             </section>
 
-            <a class="back-link" href="admin.php">← Back to Admin Hub</a>
+            <a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">← Back to your dashboard</a>
         </main>
     </body>
 </html>

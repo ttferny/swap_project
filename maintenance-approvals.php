@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = require_login(['manager', 'admin']);
+$currentUser = enforce_capability($conn, 'approvals.maintenance');
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
     $userFullName = 'Manager';

@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = enforce_sensitive_route_guard($conn);
+$currentUser = enforce_capability($conn, 'analytics.dashboard');
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Administrator';
@@ -399,6 +399,8 @@ if (empty($maintenanceBucketValues)) {
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<link rel="stylesheet" href="assets/css/live-maintenance.css" />
+		<script src="assets/js/live-maintenance.js" defer></script>
 		<style>
 			:root {
 				--bg: #f8fbff;

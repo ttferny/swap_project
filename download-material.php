@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = require_login();
+$currentUser = enforce_capability($conn, 'portal.downloads');
 $currentUserId = (int) ($currentUser['user_id'] ?? 0);
 
 $materialId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
@@ -13,7 +13,7 @@ if (!$materialId) {
 	exit('Invalid request.');
 }
 
-$sql = 'SELECT title, material_type, file_url, file_path FROM training_materials WHERE material_id = ? LIMIT 1';
+$sql = 'SELECT title, material_type, file_url, file_path, file_hash FROM training_materials WHERE material_id = ? LIMIT 1';
 $stmt = mysqli_prepare($conn, $sql);
 if ($stmt === false) {
 	http_response_code(500);
@@ -48,6 +48,7 @@ $downloadName = $sanitizedTitle;
 
 $fileUrl = trim((string) ($material['file_url'] ?? ''));
 $filePath = trim((string) ($material['file_path'] ?? ''));
+$storedHash = trim((string) ($material['file_hash'] ?? ''));
 
 $candidatePath = $filePath !== '' ? $filePath : $fileUrl;
 
@@ -131,6 +132,26 @@ if (!preg_match('#^(?:[A-Za-z]:[\\/]|/)#', $candidatePath)) {
 	$docRoot = isset($_SERVER['DOCUMENT_ROOT']) ? realpath($_SERVER['DOCUMENT_ROOT']) : false;
 	if ($docRoot !== false) {
 		$resolvedPath = $docRoot . DIRECTORY_SEPARATOR . ltrim($candidatePath, '/\\');
+	}
+}
+
+if ($storedHash !== '') {
+	$computedHash = @hash_file('sha256', $realPath) ?: null;
+	if ($computedHash === null || !hash_equals($storedHash, $computedHash)) {
+		log_audit_event(
+			$conn,
+			$currentUserId,
+			'material_hash_mismatch',
+			'training_material',
+			$materialId,
+			[
+				'expected' => $storedHash,
+				'observed' => $computedHash,
+				'path' => $candidatePath,
+			]
+		);
+		http_response_code(409);
+		exit('File integrity verification failed. Please contact an administrator.');
 	}
 }
 

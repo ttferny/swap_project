@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = require_login(['manager', 'admin']);
+$currentUser = enforce_capability($conn, 'approvals.bookings');
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
@@ -899,7 +899,7 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 									<tr>
 										<td>
 											<strong><?php echo h($booking['full_name']); ?></strong><br />
-											<span class="meta-muted"><?php echo h($booking['tp_admin_no']); ?></span>
+											<span class="meta-muted"><?php echo h(mask_sensitive_identifier($booking['tp_admin_no'] ?? '')); ?></span>
 										</td>
 										<td>
 											<?php echo h($booking['equipment_name']); ?><br />
@@ -960,7 +960,7 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 									<tr>
 										<td>
 											<strong><?php echo h($entry['full_name']); ?></strong><br />
-											<span class="meta-muted"><?php echo h($entry['tp_admin_no']); ?></span>
+											<span class="meta-muted"><?php echo h(mask_sensitive_identifier($entry['tp_admin_no'] ?? '')); ?></span>
 										</td>
 										<td>
 											<?php echo h($entry['equipment_name']); ?><br />

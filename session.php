@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+if (!defined('APP_REQUEST_START')) {
+	define('APP_REQUEST_START', microtime(true));
+}
+
 if (!function_exists('is_https_request')) {
 	function is_https_request(): bool
 	{
@@ -211,6 +215,7 @@ if (!function_exists('render_http_error')) {
 			'title' => $title,
 			'message' => $message,
 			'action' => $action,
+			'dashboard_href' => dashboard_home_path(),
 		];
 		include $viewPath;
 		exit;
@@ -301,6 +306,25 @@ if (!function_exists('sanitize_redirect_target')) {
 			return '';
 		}
 		return $target;
+	}
+}
+
+if (!function_exists('dashboard_home_path')) {
+	function dashboard_home_path(?array $user = null): string
+	{
+		$user = $user ?? current_user();
+		if ($user === null) {
+			return 'login.php';
+		}
+		$role = strtolower(trim((string) ($user['role_name'] ?? '')));
+		$routes = [
+			'admin' => 'admin.php',
+			'manager' => 'manager.php',
+			'technician' => 'technician.php',
+			'staff' => 'index.php',
+			'student' => 'index.php',
+		];
+		return $routes[$role] ?? 'index.php';
 	}
 }
 
@@ -429,6 +453,83 @@ if (!function_exists('log_audit_event')) {
 	}
 }
 
+if (!function_exists('register_performance_budget')) {
+	function register_performance_budget(float $ttfbBudgetMs, float $renderBudgetMs, string $label = 'request'): void
+	{
+		static $shutdownHooked = false;
+		$GLOBALS['__performance_budget'] = [
+			'label' => $label,
+			'ttfb' => max(1.0, $ttfbBudgetMs),
+			'render' => max(1.0, $renderBudgetMs),
+		];
+		if (function_exists('header_register_callback')) {
+			header_register_callback(static function (): void {
+				if (!isset($GLOBALS['__ttfb_snapshot_ms'])) {
+					$GLOBALS['__ttfb_snapshot_ms'] = (microtime(true) - APP_REQUEST_START) * 1000;
+				}
+			});
+		}
+		if (!$shutdownHooked) {
+			$shutdownHooked = true;
+			register_shutdown_function(static function (): void {
+				$budget = $GLOBALS['__performance_budget'] ?? null;
+				if ($budget === null) {
+					return;
+				}
+				$totalMs = (microtime(true) - APP_REQUEST_START) * 1000;
+				$ttfbMs = $GLOBALS['__ttfb_snapshot_ms'] ?? $totalMs;
+				$logPayload = [
+					'label' => $budget['label'],
+					'performance' => [
+						'actual_ttfb_ms' => round($ttfbMs, 2),
+						'actual_render_ms' => round($totalMs, 2),
+						'budget_ttfb_ms' => $budget['ttfb'],
+						'budget_render_ms' => $budget['render'],
+					],
+				];
+				$logLine = json_encode($logPayload, JSON_UNESCAPED_SLASHES);
+				if ($logLine !== false) {
+					$dir = application_log_directory();
+					@file_put_contents($dir . '/performance.log', $logLine . PHP_EOL, FILE_APPEND);
+				}
+				$ttfbExceeded = $ttfbMs > $budget['ttfb'];
+				$renderExceeded = $totalMs > $budget['render'];
+				if (($ttfbExceeded || $renderExceeded) && function_exists('record_system_error')) {
+					$exception = new RuntimeException('Performance budget exceeded for ' . $budget['label']);
+					record_system_error($exception, $logPayload['performance']);
+				}
+				if (!headers_sent()) {
+					$timingValue = round($totalMs, 2);
+					header('Server-Timing: app;dur=' . $timingValue);
+					header('X-Performance-Metrics: ttfb=' . round($ttfbMs, 2) . 'ms; render=' . $timingValue . 'ms');
+				}
+			});
+		}
+		if (!headers_sent()) {
+			header('X-Performance-Budget: TTFB<=' . $ttfbBudgetMs . 'ms; Render<=' . $renderBudgetMs . 'ms; Label=' . $label);
+		}
+	}
+}
+
+if (!function_exists('record_data_modification_audit')) {
+	function record_data_modification_audit(mysqli $conn, array $user, string $entityType, ?int $entityId, array $payload): void
+	{
+		$actorId = isset($user['user_id']) ? (int) $user['user_id'] : null;
+		$auditPayload = [
+			'path' => (string) ($_SERVER['SCRIPT_NAME'] ?? ''),
+			'payload' => $payload,
+		];
+		log_audit_event(
+			$conn,
+			$actorId,
+			'data_mutation',
+			$entityType,
+			$entityId,
+			$auditPayload
+		);
+	}
+}
+
 if (!function_exists('apply_security_headers')) {
 	function apply_security_headers(): void
 	{
@@ -451,6 +552,9 @@ if (!function_exists('apply_security_headers')) {
 		header('X-Frame-Options: DENY');
 		header('Referrer-Policy: same-origin');
 		header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+		header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+		header('Pragma: no-cache');
+		header('Expires: 0');
 		if (is_https_request()) {
 			header('Strict-Transport-Security: max-age=63072000; includeSubDomains; preload');
 		}
@@ -659,6 +763,27 @@ if (!function_exists('decrypt_sensitive_value')) {
 			return '';
 		}
 		return $plaintext;
+	}
+}
+
+if (!function_exists('mask_sensitive_identifier')) {
+	function mask_sensitive_identifier(?string $value, int $visible = 4): string
+	{
+		$normalized = preg_replace('/\s+/', '', (string) $value);
+		if ($normalized === null) {
+			$normalized = '';
+		}
+		if ($normalized === '') {
+			return '';
+		}
+		$lengthFn = function_exists('mb_strlen') ? 'mb_strlen' : 'strlen';
+		$substrFn = function_exists('mb_substr') ? 'mb_substr' : 'substr';
+		$totalLength = (int) $lengthFn($normalized);
+		$visible = max(0, min($visible, $totalLength));
+		$maskedLength = max(0, $totalLength - $visible);
+		$mask = $maskedLength > 0 ? str_repeat('*', $maskedLength) : '';
+		$suffix = $visible > 0 ? $substrFn($normalized, $totalLength - $visible) : '';
+		return $mask . $suffix;
 	}
 }
 
@@ -879,9 +1004,107 @@ if (!function_exists('log_sensitive_route_access')) {
 	}
 }
 
+if (!function_exists('access_control_matrix')) {
+	function access_control_matrix(): array
+	{
+		static $matrix = null;
+		if ($matrix !== null) {
+			return $matrix;
+		}
+		$matrix = [
+			'portal.home' => [
+				'roles' => ['student', 'staff'],
+			],
+			'portal.booking' => [
+				'roles' => ['student', 'staff', 'technician', 'manager', 'admin'],
+			],
+			'portal.learning' => [
+				'roles' => ['student', 'staff', 'technician', 'manager', 'admin'],
+			],
+			'portal.report_fault' => [
+				'roles' => ['student', 'staff', 'technician', 'manager', 'admin'],
+			],
+			'portal.downloads' => [
+				'roles' => ['student', 'staff', 'technician', 'manager', 'admin'],
+			],
+			'manager.console' => [
+				'roles' => ['manager', 'admin'],
+			],
+			'technician.console' => [
+				'roles' => ['technician', 'manager', 'admin'],
+			],
+			'approvals.bookings' => [
+				'roles' => ['manager', 'admin'],
+			],
+			'approvals.maintenance' => [
+				'roles' => ['manager', 'admin'],
+			],
+			'incidents.review' => [
+				'roles' => ['manager', 'admin'],
+			],
+			'admin.core' => [
+				'roles' => ['admin'],
+				'sensitive' => true,
+			],
+			'analytics.dashboard' => [
+				'roles' => ['admin'],
+				'sensitive' => true,
+			],
+		];
+		return $matrix;
+	}
+}
+
+if (!function_exists('enforce_capability')) {
+	function enforce_capability(mysqli $conn, string $capabilityKey): array
+	{
+		$matrix = access_control_matrix();
+		if (!isset($matrix[$capabilityKey])) {
+			render_http_error(500, 'Access control policy missing for this resource.');
+		}
+		$policy = $matrix[$capabilityKey];
+		$allowedRoles = array_map(static function ($role): string {
+			return strtolower(trim((string) $role));
+		}, $policy['roles'] ?? []);
+		if (empty($allowedRoles)) {
+			render_http_error(500, 'Access control policy is misconfigured.');
+		}
+		$user = require_login();
+		$currentRole = strtolower(trim((string) ($user['role_name'] ?? '')));
+		if (!in_array($currentRole, $allowedRoles, true)) {
+			$actorId = isset($user['user_id']) ? (int) $user['user_id'] : null;
+			log_audit_event(
+				$conn,
+				$actorId,
+				'access_denied',
+				'capability',
+				null,
+				[
+					'capability' => $capabilityKey,
+					'role' => $currentRole,
+					'path' => (string) ($_SERVER['SCRIPT_NAME'] ?? ''),
+				]
+			);
+			render_http_error(403);
+		}
+		if (!empty($policy['sensitive'])) {
+			if (!validate_jwt_for_user($user)) {
+				force_reauthentication('Your administrator session expired. Please sign in again.');
+			}
+			log_sensitive_route_access($conn, $user);
+		} elseif (!empty($policy['log_access'])) {
+			log_sensitive_route_access($conn, $user);
+		}
+		return $user;
+	}
+}
+
 if (!function_exists('enforce_sensitive_route_guard')) {
 	function enforce_sensitive_route_guard(mysqli $conn, array $requiredRoles = ['admin']): array
 	{
+		if (count($requiredRoles) === 1 && strtolower((string) $requiredRoles[0]) === 'admin') {
+			return enforce_capability($conn, 'admin.core');
+		}
 		$user = require_login($requiredRoles);
 		if (!validate_jwt_for_user($user)) {
 			force_reauthentication('Your administrator session expired. Please sign in again.');
@@ -889,4 +1112,13 @@ if (!function_exists('enforce_sensitive_route_guard')) {
 		log_sensitive_route_access($conn, $user);
 		return $user;
 	}
+}
+
+if (php_sapi_name() !== 'cli' && function_exists('register_performance_budget')) {
+	$scriptName = (string) ($_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? '');
+	$normalizedLabel = trim($scriptName, '/');
+	if ($normalizedLabel === '') {
+		$normalizedLabel = 'index.php';
+	}
+	register_performance_budget(1500.0, 3000.0, $normalizedLabel);
 }

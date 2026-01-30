@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = enforce_sensitive_route_guard($conn);
+$currentUser = enforce_capability($conn, 'admin.core');
 $userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
 if ($userFullName === '') {
     $userFullName = 'Administrator';

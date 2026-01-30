@@ -5,7 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = enforce_sensitive_route_guard($conn);
+$currentUser = enforce_capability($conn, 'admin.core');
+$dashboardHref = dashboard_home_path($currentUser);
 $currentUserId = (int) ($currentUser['user_id'] ?? 0);
 $userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
 if ($userFullName === '') {
@@ -66,6 +67,12 @@ if (!function_exists('ensure_training_material_schema')) {
                 "ALTER TABLE training_materials ADD COLUMN skill_level VARCHAR(32) NOT NULL DEFAULT 'general' AFTER material_type"
             );
         }
+        if (!isset($existing['file_hash'])) {
+			@mysqli_query(
+				$conn,
+				"ALTER TABLE training_materials ADD COLUMN file_hash CHAR(64) NULL DEFAULT NULL AFTER file_path"
+			);
+		}
     }
 }
 
@@ -165,6 +172,7 @@ if (!function_exists('process_material_upload')) {
         $result = [
             'status' => 'none',
             'path' => null,
+            'hash' => null,
             'error' => null,
         ];
         if (!isset($fileData) || !is_array($fileData)) {
@@ -229,8 +237,10 @@ if (!function_exists('process_material_upload')) {
             $result['error'] = 'Server could not save the uploaded file.';
             return $result;
         }
+        $fileHash = @hash_file('sha256', $destination) ?: null;
         $result['status'] = 'stored';
         $result['path'] = $relativePath;
+        $result['hash'] = $fileHash;
         return $result;
     }
 }
@@ -274,6 +284,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $title = trim((string) ($_POST['title'] ?? ''));
+        if ($title !== '' && (function_exists('mb_strlen') ? mb_strlen($title) : strlen($title)) > 120) {
+            $messages['error'][] = 'Title must be 120 characters or fewer.';
+        }
         $materialType = trim((string) ($_POST['material_type'] ?? $defaultMaterialType));
         if (!isset($allowedMaterialTypes[$materialType])) {
             $materialType = $defaultMaterialType;
@@ -285,6 +298,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messages['error'][] = 'Select a valid skill level.';
         }
         $version = trim((string) ($_POST['version'] ?? ''));
+        if ($version !== '' && (function_exists('mb_strlen') ? mb_strlen($version) : strlen($version)) > 32) {
+            $messages['error'][] = 'Version label is too long.';
+        }
         $fileUrl = trim((string) ($_POST['file_url'] ?? ''));
         if ($fileUrl !== '' && filter_var($fileUrl, FILTER_VALIDATE_URL) === false) {
             $messages['error'][] = 'Provide a valid URL for the external resource.';
@@ -303,6 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $messages['error'][] = $uploadResult['error'];
         }
         $filePath = $uploadResult['status'] === 'stored' ? $uploadResult['path'] : '';
+        $fileHash = $uploadResult['status'] === 'stored' && isset($uploadResult['hash']) ? (string) $uploadResult['hash'] : '';
 
         if ($title === '') {
             $messages['error'][] = 'Title is required.';
@@ -316,8 +333,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!mysqli_begin_transaction($conn)) {
                 $messages['error'][] = 'Unable to start a database transaction right now.';
             } else {
-                $insertSql = "INSERT INTO training_materials (title, material_type, skill_level, file_url, file_path, version, uploaded_by)
-                              VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, 0))";
+                $insertSql = "INSERT INTO training_materials (title, material_type, skill_level, file_url, file_path, file_hash, version, uploaded_by)
+                              VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, 0))";
                 $stmt = mysqli_prepare($conn, $insertSql);
                 if ($stmt === false) {
                     mysqli_rollback($conn);
@@ -325,16 +342,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $fileUrlParam = $fileUrl;
                     $filePathParam = $filePath;
+                    $fileHashParam = $fileHash;
                     $versionParam = $version;
                     $uploadedByParam = $currentUserId > 0 ? $currentUserId : 0;
                     mysqli_stmt_bind_param(
                         $stmt,
-                        'ssssssi',
+                        'sssssssi',
                         $title,
                         $materialType,
                         $skillLevel,
                         $fileUrlParam,
                         $filePathParam,
+                        $fileHashParam,
                         $versionParam,
                         $uploadedByParam
                     );
@@ -356,15 +375,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $messages['success'][] = 'Training material "' . $title . '" was added.';
                             $createDraft = $defaultCreateDraft;
                             $createSucceeded = true;
-                            log_audit_event(
+                            record_data_modification_audit(
                                 $conn,
-                                $currentUserId,
-                                'training_material_created',
+                                $currentUser,
                                 'training_material',
                                 $materialId,
                                 [
+                                    'action' => 'create',
                                     'title' => $title,
                                     'material_type' => $materialType,
+                                    'skill_level' => $skillLevel,
                                     'linked_equipment' => $selectedEquipment,
                                 ]
                             );
@@ -385,7 +405,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!validate_csrf_token('learning_material_update_' . $materialId, $csrfToken)) {
             $messages['error'][] = 'Your edit request expired. Please try again.';
         } else {
-            $fetchStmt = mysqli_prepare($conn, 'SELECT title, material_type, skill_level, version, file_url, file_path FROM training_materials WHERE material_id = ? LIMIT 1');
+            $fetchStmt = mysqli_prepare($conn, 'SELECT title, material_type, skill_level, version, file_url, file_path, file_hash FROM training_materials WHERE material_id = ? LIMIT 1');
             if ($fetchStmt === false) {
                 $messages['error'][] = 'Unable to load the current material details.';
             } else {
@@ -402,6 +422,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $messages['error'][] = 'That training material no longer exists.';
                 } else {
                     $title = trim((string) ($_POST['title'] ?? $existing['title'] ?? ''));
+                    if ($title !== '' && (function_exists('mb_strlen') ? mb_strlen($title) : strlen($title)) > 120) {
+                        $messages['error'][] = 'Title must be 120 characters or fewer.';
+                    }
                     $materialType = trim((string) ($_POST['material_type'] ?? $existing['material_type'] ?? $defaultMaterialType));
                     if (!isset($allowedMaterialTypes[$materialType])) {
                         $materialType = $existing['material_type'] ?? $defaultMaterialType;
@@ -413,6 +436,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messages['error'][] = 'Select a valid skill level.';
                     }
                     $version = trim((string) ($_POST['version'] ?? ($existing['version'] ?? '')));
+                    if ($version !== '' && (function_exists('mb_strlen') ? mb_strlen($version) : strlen($version)) > 32) {
+                        $messages['error'][] = 'Version label is too long.';
+                    }
                     $fileUrl = trim((string) ($_POST['file_url'] ?? ($existing['file_url'] ?? '')));
                     if ($fileUrl !== '' && filter_var($fileUrl, FILTER_VALIDATE_URL) === false) {
                         $messages['error'][] = 'Provide a valid URL for the external resource.';
@@ -426,12 +452,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $previousFilePath = trim((string) ($existing['file_path'] ?? ''));
+                    $previousFileHash = trim((string) ($existing['file_hash'] ?? ''));
                     $nextFilePath = $previousFilePath;
+                    $nextFileHash = $previousFileHash;
                     if ($removeFile) {
                         $nextFilePath = '';
+                        $nextFileHash = '';
                     }
                     if ($uploadResult['status'] === 'stored' && $uploadResult['path'] !== null) {
                         $nextFilePath = $uploadResult['path'];
+                        $nextFileHash = isset($uploadResult['hash']) ? (string) $uploadResult['hash'] : '';
                     }
 
                     if ($title === '') {
@@ -446,9 +476,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if (!mysqli_begin_transaction($conn)) {
                             $messages['error'][] = 'Unable to start a database transaction right now.';
                         } else {
-                            $updateSql = "UPDATE training_materials
-                                          SET title = ?, material_type = ?, skill_level = ?, file_url = NULLIF(?, ''), file_path = NULLIF(?, ''), version = NULLIF(?, ''), updated_at = NOW()
-                                          WHERE material_id = ?";
+                                    $updateSql = "UPDATE training_materials
+                                        SET title = ?, material_type = ?, skill_level = ?, file_url = NULLIF(?, ''), file_path = NULLIF(?, ''), file_hash = NULLIF(?, ''), version = NULLIF(?, ''), updated_at = NOW()
+                                        WHERE material_id = ?";
                             $stmt = mysqli_prepare($conn, $updateSql);
                             if ($stmt === false) {
                                 mysqli_rollback($conn);
@@ -456,18 +486,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             } else {
                                 $fileUrlParam = $fileUrl;
                                 $filePathParam = $nextFilePath;
+                                    $fileHashParam = $nextFileHash;
                                 $versionParam = $version;
-                                mysqli_stmt_bind_param(
-                                    $stmt,
-                                    'ssssssi',
-                                    $title,
-                                    $materialType,
-                                    $skillLevel,
-                                    $fileUrlParam,
-                                    $filePathParam,
-                                    $versionParam,
-                                    $materialId
-                                );
+                                    mysqli_stmt_bind_param(
+                                        $stmt,
+                                        'sssssssi',
+                                        $title,
+                                        $materialType,
+                                        $skillLevel,
+                                        $fileUrlParam,
+                                        $filePathParam,
+                                        $fileHashParam,
+                                        $versionParam,
+                                        $materialId
+                                    );
                                 if (!mysqli_stmt_execute($stmt)) {
                                     $messages['error'][] = 'Unable to save your edits right now.';
                                     mysqli_stmt_close($stmt);
@@ -481,15 +513,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         mysqli_commit($conn);
                                         $messages['success'][] = 'Training material "' . $title . '" was updated.';
                                         $updateSucceeded = true;
-                                        log_audit_event(
+                                        record_data_modification_audit(
                                             $conn,
-                                            $currentUserId,
-                                            'training_material_updated',
+                                            $currentUser,
                                             'training_material',
                                             $materialId,
                                             [
+                                                'action' => 'update',
                                                 'title' => $title,
                                                 'material_type' => $materialType,
+                                                'skill_level' => $skillLevel,
                                                 'linked_equipment' => $selectedEquipment,
                                                 'has_file' => $nextFilePath !== '',
                                                 'has_url' => $fileUrl !== '',
@@ -549,13 +582,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } else {
                             $messages['success'][] = 'Training material "' . ($existing['title'] ?? 'Untitled') . '" was removed.';
                             delete_material_file($existing['file_path'] ?? null);
-                            log_audit_event(
+                            record_data_modification_audit(
                                 $conn,
-                                $currentUserId,
-                                'training_material_deleted',
+                                $currentUser,
                                 'training_material',
                                 $materialId,
                                 [
+                                    'action' => 'delete',
                                     'title' => $existing['title'] ?? '',
                                 ]
                             );
@@ -1226,7 +1259,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                 <?php endif; ?>
             </section>
 
-            <a class="back-link" href="admin.php">&larr; Back to Admin Workspace</a>
+            <a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">&larr; Back to your dashboard</a>
         </main>
     </body>
 </html>

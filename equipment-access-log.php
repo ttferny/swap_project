@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+enforce_capability($conn, 'admin.core');
+
 http_response_code(404);
 exit('Audit logs are only available through secured database access.');
 
