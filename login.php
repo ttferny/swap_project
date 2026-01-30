@@ -19,9 +19,21 @@ $roleDestinations = [
 $roleAllowedTargets = [
 	'admin' => [
 		'admin.php',
+		'index.php',
+		'book-machines.php',
+		'learning-space.php',
+		'report-fault.php',
+		'download-material.php',
 		'manager.php',
 		'technician.php',
 		'approve-bookings.php',
+		'maintenance-approvals.php',
+		'incident-reports.php',
+		'analytics-dashboard.php',
+		'admin-users.php',
+		'admin-equipment-certs.php',
+		'admin-insights.php',
+		'admin-learning.php',
 	],
 	'manager' => [
 		'manager.php',
@@ -145,6 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				$_SESSION['role_id'] = $user['role_id'];
 				$_SESSION['role_name'] = $user['role_name'];
 				$_SESSION['full_name'] = $user['full_name'];
+				issue_user_jwt($user);
 				unset($_SESSION[$throttleKey]);
 
 				$roleKey = strtolower(trim($user['role_name'] ?? ''));

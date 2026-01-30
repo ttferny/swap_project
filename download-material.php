@@ -4,7 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-require_login();
+$currentUser = require_login();
+$currentUserId = (int) ($currentUser['user_id'] ?? 0);
 
 $materialId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$materialId) {
@@ -55,12 +56,69 @@ if ($candidatePath === '') {
 	exit('File not available.');
 }
 
+$associatedEquipmentIds = [];
+$equipmentStmt = mysqli_prepare(
+	$conn,
+	'  SELECT equipment_id FROM equipment_training_materials WHERE material_id = ? '
+);
+if ($equipmentStmt) {
+	mysqli_stmt_bind_param($equipmentStmt, 'i', $materialId);
+	mysqli_stmt_execute($equipmentStmt);
+	$equipmentResult = mysqli_stmt_get_result($equipmentStmt);
+	if ($equipmentResult) {
+		while ($equipmentRow = mysqli_fetch_assoc($equipmentResult)) {
+			$equipmentId = isset($equipmentRow['equipment_id']) ? (int) $equipmentRow['equipment_id'] : 0;
+			if ($equipmentId > 0) {
+				$associatedEquipmentIds[] = $equipmentId;
+			}
+		}
+		mysqli_free_result($equipmentResult);
+	}
+	mysqli_stmt_close($equipmentStmt);
+}
+
+if (!user_can_access_any_equipment($conn, $currentUserId, $associatedEquipmentIds)) {
+	http_response_code(403);
+	exit('You do not have permission to download this material.');
+}
+
+$logMaterialDownload = static function (string $deliveryType) use (&$downloadName, $conn, $currentUserId, $associatedEquipmentIds, $materialId, $title): void {
+	$details = [
+		'material_id' => $materialId,
+		'material_title' => $title,
+		'download_name' => $downloadName,
+		'delivery' => $deliveryType,
+	];
+	if (!empty($associatedEquipmentIds)) {
+		foreach ($associatedEquipmentIds as $equipmentId) {
+			log_audit_event(
+				$conn,
+				$currentUserId,
+				'equipment_resource_download',
+				'equipment',
+				$equipmentId,
+				$details
+			);
+		}
+	} else {
+		log_audit_event(
+			$conn,
+			$currentUserId,
+			'training_material_download',
+			'training_material',
+			$materialId,
+			$details
+		);
+	}
+};
+
 if (filter_var($candidatePath, FILTER_VALIDATE_URL)) {
 	$pathName = (string) parse_url($candidatePath, PHP_URL_PATH);
 	$remoteName = $pathName !== '' ? basename($pathName) : '';
 	if ($remoteName !== '') {
 		$downloadName = $remoteName;
 	}
+	$logMaterialDownload('remote_url');
 	header('Location: ' . $candidatePath);
 	exit;
 }
@@ -114,6 +172,8 @@ if (function_exists('finfo_open')) {
 		}
 	}
 }
+
+$logMaterialDownload('local_file');
 
 header('Content-Type: ' . $mimeType);
 header('Content-Disposition: attachment; filename="' . $downloadName . '"');

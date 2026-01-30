@@ -441,6 +441,26 @@ INSERT INTO `equipment_training_materials` (`equipment_id`, `material_id`, `link
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `user_equipment_access`
+--
+
+CREATE TABLE `user_equipment_access` (
+  `user_id` bigint(20) NOT NULL,
+  `equipment_id` bigint(20) NOT NULL,
+  `granted_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `granted_by` bigint(20) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+--
+-- Dumping data for table `user_equipment_access`
+--
+
+-- No seed data for this table.
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `incidents`
 --
 
@@ -532,6 +552,10 @@ CREATE TABLE `maintenance_tasks` (
   `task_type` enum('preventive','corrective') NOT NULL DEFAULT 'corrective',
   `priority` enum('low','medium','high') NOT NULL DEFAULT 'medium',
   `status` enum('open','in_progress','done','cancelled') NOT NULL DEFAULT 'open',
+  `manager_status` enum('submitted','approved','rejected') NOT NULL DEFAULT 'submitted',
+  `manager_notes` text DEFAULT NULL,
+  `manager_reviewed_by` bigint(20) DEFAULT NULL,
+  `manager_reviewed_at` datetime DEFAULT NULL,
   `scheduled_for` datetime DEFAULT NULL,
   `assigned_to` bigint(20) DEFAULT NULL,
   `created_by` bigint(20) NOT NULL,
@@ -544,17 +568,17 @@ CREATE TABLE `maintenance_tasks` (
 -- Dumping data for table `maintenance_tasks`
 --
 
-INSERT INTO `maintenance_tasks` (`task_id`, `equipment_id`, `title`, `description`, `task_type`, `priority`, `status`, `scheduled_for`, `assigned_to`, `created_by`, `completed_at`, `created_at`, `updated_at`) VALUES
-(1, 21, 'Repair/Service: 3-Axis CNC Milling Machine', 'Equipment is currently in maintenance. Diagnose root cause, perform service or repairs, then verify with a test run before returning to operational.', 'corrective', 'high', 'done', '2026-01-28 14:22:57', 10, 10, '2026-01-27 18:57:26', '2026-01-27 14:22:57', '2026-01-27 18:57:26'),
-(2, 22, 'Preventive Check: CNC Turning Lathe', 'Routine inspection: clean machine, check lubrication, tool alignment, belts and hoses, then run a calibration cut.', 'preventive', 'medium', 'in_progress', '2026-02-10 14:22:57', 10, 10, '2026-01-27 18:28:14', '2026-01-27 14:22:57', '2026-01-27 19:12:23'),
-(3, 23, 'Preventive Check: Industrial Robotic Arm', 'Inspect joints, cabling and emergency stop, verify safety zones, check end-effector mounting and run diagnostics.', 'preventive', 'medium', 'done', '2026-02-17 14:22:57', 10, 10, '2026-01-27 18:56:08', '2026-01-27 14:22:57', '2026-01-27 18:56:08'),
-(4, 24, 'Preventive Check: Collaborative Robot (Cobot)', 'Verify torque sensors, safety limits, firmware version and payload settings. Perform functional test.', 'preventive', 'medium', 'in_progress', '2026-02-17 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 19:12:27'),
-(5, 25, 'Service: Metal 3D Printer', 'Equipment is currently in maintenance. Inspect build plate, filters, material handling and calibration before returning to service.', 'corrective', 'high', 'open', '2026-01-29 14:22:57', 10, 10, '2026-01-27 18:27:30', '2026-01-27 14:22:57', '2026-01-27 18:54:43'),
-(6, 26, 'Preventive Check: FDM 3D Printer', 'Clean nozzle and extruder, check bed leveling, inspect belts and rails, and print a calibration model.', 'preventive', 'low', 'open', '2026-02-26 14:22:57', 10, 10, '2026-01-27 18:28:18', '2026-01-27 14:22:57', '2026-01-27 18:54:50'),
-(7, 27, 'Preventive Calibration: CMM', 'Inspect probe, clean granite surface, verify environmental conditions, and run full calibration routine.', 'preventive', 'high', 'cancelled', '2026-02-03 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 18:56:05'),
-(8, 28, 'Preventive Check: PLC Training System', 'Inspect wiring and IO modules, test sample PLC program, verify communications and power stability.', 'preventive', 'low', 'done', '2026-02-26 14:22:57', 10, 10, '2026-01-27 18:56:13', '2026-01-27 14:22:57', '2026-01-27 18:56:13'),
-(9, 29, 'Preventive Check: Machine Vision Inspection System', 'Clean camera lens and lighting, verify focus and exposure, test defect detection and software health.', 'preventive', 'medium', 'open', '2026-02-17 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 14:42:08'),
-(10, 30, 'Fix Fault: Automated Guided Vehicle (AGV)', 'AGV is currently faulty. Inspect battery, sensors, navigation system, motors and safety systems, then perform supervised test run.', 'corrective', 'high', 'open', '2026-01-28 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 18:54:56');
+INSERT INTO `maintenance_tasks` (`task_id`, `equipment_id`, `title`, `description`, `task_type`, `priority`, `status`, `manager_status`, `manager_notes`, `manager_reviewed_by`, `manager_reviewed_at`, `scheduled_for`, `assigned_to`, `created_by`, `completed_at`, `created_at`, `updated_at`) VALUES
+(1, 21, 'Repair/Service: 3-Axis CNC Milling Machine', 'Equipment is currently in maintenance. Diagnose root cause, perform service or repairs, then verify with a test run before returning to operational.', 'corrective', 'high', 'done', 'approved', NULL, 10, '2026-01-27 15:02:00', '2026-01-28 14:22:57', 10, 10, '2026-01-27 18:57:26', '2026-01-27 14:22:57', '2026-01-27 18:57:26'),
+(2, 22, 'Preventive Check: CNC Turning Lathe', 'Routine inspection: clean machine, check lubrication, tool alignment, belts and hoses, then run a calibration cut.', 'preventive', 'medium', 'in_progress', 'approved', NULL, 10, '2026-01-27 15:10:00', '2026-02-10 14:22:57', 10, 10, '2026-01-27 18:28:14', '2026-01-27 14:22:57', '2026-01-27 19:12:23'),
+(3, 23, 'Preventive Check: Industrial Robotic Arm', 'Inspect joints, cabling and emergency stop, verify safety zones, check end-effector mounting and run diagnostics.', 'preventive', 'medium', 'done', 'approved', NULL, 10, '2026-01-27 15:15:00', '2026-02-17 14:22:57', 10, 10, '2026-01-27 18:56:08', '2026-01-27 14:22:57', '2026-01-27 18:56:08'),
+(4, 24, 'Preventive Check: Collaborative Robot (Cobot)', 'Verify torque sensors, safety limits, firmware version and payload settings. Perform functional test.', 'preventive', 'medium', 'in_progress', 'approved', NULL, 10, '2026-01-27 15:20:00', '2026-02-17 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 19:12:27'),
+(5, 25, 'Service: Metal 3D Printer', 'Equipment is currently in maintenance. Inspect build plate, filters, material handling and calibration before returning to service.', 'corrective', 'high', 'open', 'submitted', NULL, NULL, NULL, '2026-01-29 14:22:57', 10, 10, '2026-01-27 18:27:30', '2026-01-27 14:22:57', '2026-01-27 18:54:43'),
+(6, 26, 'Preventive Check: FDM 3D Printer', 'Clean nozzle and extruder, check bed leveling, inspect belts and rails, and print a calibration model.', 'preventive', 'low', 'open', 'approved', NULL, 10, '2026-01-27 15:30:00', '2026-02-26 14:22:57', 10, 10, '2026-01-27 18:28:18', '2026-01-27 14:22:57', '2026-01-27 18:54:50'),
+(7, 27, 'Preventive Calibration: CMM', 'Inspect probe, clean granite surface, verify environmental conditions, and run full calibration routine.', 'preventive', 'high', 'cancelled', 'rejected', 'Requires updated risk assessment before approval.', 10, '2026-01-27 16:45:00', '2026-02-03 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 18:56:05'),
+(8, 28, 'Preventive Check: PLC Training System', 'Inspect wiring and IO modules, test sample PLC program, verify communications and power stability.', 'preventive', 'low', 'done', 'approved', NULL, 10, '2026-01-27 15:40:00', '2026-02-26 14:22:57', 10, 10, '2026-01-27 18:56:13', '2026-01-27 14:22:57', '2026-01-27 18:56:13'),
+(9, 29, 'Preventive Check: Machine Vision Inspection System', 'Clean camera lens and lighting, verify focus and exposure, test defect detection and software health.', 'preventive', 'medium', 'open', 'approved', NULL, 10, '2026-01-27 15:45:00', '2026-02-17 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 14:42:08'),
+(10, 30, 'Fix Fault: Automated Guided Vehicle (AGV)', 'AGV is currently faulty. Inspect battery, sensors, navigation system, motors and safety systems, then perform supervised test run.', 'corrective', 'high', 'open', 'approved', NULL, 10, '2026-01-27 15:50:00', '2026-01-28 14:22:57', 10, 10, NULL, '2026-01-27 14:22:57', '2026-01-27 18:54:56');
 
 -- --------------------------------------------------------
 
@@ -762,6 +786,14 @@ ALTER TABLE `equipment_training_materials`
   ADD PRIMARY KEY (`equipment_id`,`material_id`),
   ADD KEY `fk_eq_train_material` (`material_id`),
   ADD KEY `fk_eq_train_linked_by` (`linked_by`);
+
+--
+-- Indexes for table `user_equipment_access`
+--
+ALTER TABLE `user_equipment_access`
+  ADD PRIMARY KEY (`user_id`,`equipment_id`),
+  ADD KEY `fk_uea_equipment` (`equipment_id`),
+  ADD KEY `fk_uea_granted_by` (`granted_by`);
 
 --
 -- Indexes for table `incidents`
@@ -974,6 +1006,14 @@ ALTER TABLE `equipment_training_materials`
   ADD CONSTRAINT `fk_eq_train_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipment` (`equipment_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_eq_train_linked_by` FOREIGN KEY (`linked_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_eq_train_material` FOREIGN KEY (`material_id`) REFERENCES `training_materials` (`material_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `user_equipment_access`
+--
+ALTER TABLE `user_equipment_access`
+  ADD CONSTRAINT `fk_uea_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipment` (`equipment_id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_uea_granted_by` FOREIGN KEY (`granted_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_uea_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `incidents`

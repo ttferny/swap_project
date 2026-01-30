@@ -132,12 +132,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_investigation'
 				mysqli_stmt_close($lookupStmt);
 			}
 
+			$encryptedFindings = encrypt_sensitive_value($findings);
+			$encryptedActions = encrypt_sensitive_value($actionsTaken);
 			$updateStmt = mysqli_prepare(
 				$conn,
 				'UPDATE incident_investigations SET findings = ?, actions_taken = ?, closed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE investigation_id = ?'
 			);
 			if ($updateStmt) {
-				mysqli_stmt_bind_param($updateStmt, 'ssi', $findings, $actionsTaken, $investigationId);
+				mysqli_stmt_bind_param($updateStmt, 'ssi', $encryptedFindings, $encryptedActions, $investigationId);
 				$success = mysqli_stmt_execute($updateStmt);
 				mysqli_stmt_close($updateStmt);
 			}
@@ -190,6 +192,8 @@ if ($incidentResult === false) {
 	$incidentsError = 'Unable to load incident reports right now.';
 } else {
 	while ($row = mysqli_fetch_assoc($incidentResult)) {
+		$row['location'] = decrypt_sensitive_value($row['location'] ?? null);
+		$row['description'] = decrypt_sensitive_value($row['description'] ?? null);
 		$incidents[] = $row;
 	}
 	mysqli_free_result($incidentResult);
@@ -212,6 +216,10 @@ if ($investigationResult === false) {
 	$investigationsError = 'Unable to load incident investigations right now.';
 } else {
 	while ($row = mysqli_fetch_assoc($investigationResult)) {
+		$row['location'] = decrypt_sensitive_value($row['location'] ?? null);
+		$row['incident_description'] = decrypt_sensitive_value($row['incident_description'] ?? null);
+		$row['findings'] = decrypt_sensitive_value($row['findings'] ?? null);
+		$row['actions_taken'] = decrypt_sensitive_value($row['actions_taken'] ?? null);
 		$investigations[] = $row;
 	}
 	mysqli_free_result($investigationResult);

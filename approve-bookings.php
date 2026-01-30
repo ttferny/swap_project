@@ -135,6 +135,22 @@ if (!function_exists('promote_waitlist_entry')) {
 					'end_time' => $desiredEnd,
 				]
 			);
+			if ($equipmentId > 0) {
+				log_audit_event(
+					$conn,
+					$actorUserId,
+					'equipment_waitlist_promoted',
+					'equipment',
+					$equipmentId,
+					[
+						'booking_id' => $newBookingId,
+						'waitlist_id' => $waitlistId,
+						'window_start' => $desiredStart,
+						'window_end' => $desiredEnd,
+						'promotion_source' => 'manager_panel',
+					]
+				);
+			}
 		}
 
 		$deleteStmt = mysqli_prepare($conn, 'DELETE FROM booking_waitlist WHERE waitlist_id = ?');
@@ -228,6 +244,22 @@ if (
 							'end_time' => $bookingContext['end_time'] ?? null,
 						]
 					);
+					$equipmentIdForAudit = isset($bookingContext['equipment_id']) ? (int) $bookingContext['equipment_id'] : 0;
+					if ($equipmentIdForAudit > 0) {
+						log_audit_event(
+							$conn,
+							$currentUserId,
+							'equipment_booking_approved',
+							'equipment',
+							$equipmentIdForAudit,
+							[
+								'booking_id' => $bookingId,
+								'requester_id' => $bookingContext['requester_id'] ?? null,
+								'window_start' => $bookingContext['start_time'] ?? null,
+								'window_end' => $bookingContext['end_time'] ?? null,
+							]
+						);
+					}
 				} else {
 					$decisionFeedback = 'No pending booking was updated. It may have been actioned already.';
 					$decisionFeedbackType = 'error';
@@ -260,6 +292,23 @@ if (
 							'end_time' => $bookingContext['end_time'] ?? null,
 						]
 					);
+					$equipmentIdForAudit = isset($bookingContext['equipment_id']) ? (int) $bookingContext['equipment_id'] : 0;
+					if ($equipmentIdForAudit > 0) {
+						log_audit_event(
+							$conn,
+							$currentUserId,
+							'equipment_booking_rejected',
+							'equipment',
+							$equipmentIdForAudit,
+							[
+								'booking_id' => $bookingId,
+								'requester_id' => $bookingContext['requester_id'] ?? null,
+								'window_start' => $bookingContext['start_time'] ?? null,
+								'window_end' => $bookingContext['end_time'] ?? null,
+								'rejection_reason' => $reason,
+							]
+						);
+					}
 					if ($bookingContext !== null) {
 						$promotionMessage = promote_waitlist_entry($conn, $bookingContext, $currentUserId);
 						if ($promotionMessage !== null) {

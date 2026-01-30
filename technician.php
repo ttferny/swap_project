@@ -85,6 +85,7 @@ function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 			mt.task_type,
 			mt.priority,
 			mt.status,
+			mt.manager_status,
 			mt.scheduled_for,
 			e.name AS equipment_name,
 			u.full_name AS assigned_to_name
@@ -92,6 +93,7 @@ function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 		LEFT JOIN equipment e ON e.equipment_id = mt.equipment_id
 		LEFT JOIN users u ON u.user_id = mt.assigned_to
 		WHERE mt.status NOT IN ('done', 'cancelled')
+			AND mt.manager_status = 'approved'
 		ORDER BY
 			CASE WHEN mt.scheduled_for IS NULL THEN 1 ELSE 0 END,
 			mt.scheduled_for ASC,
@@ -117,6 +119,7 @@ function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 				'task_type' => (string) ($row['task_type'] ?? 'corrective'),
 				'priority' => (string) ($row['priority'] ?? 'medium'),
 				'status' => (string) ($row['status'] ?? 'open'),
+				'manager_status' => (string) ($row['manager_status'] ?? 'submitted'),
 				'scheduled_for' => $row['scheduled_for'] ?? null,
 				'equipment_name' => $equipmentName,
 				'assigned_to_name' => trim((string) ($row['assigned_to_name'] ?? '')),
@@ -1391,6 +1394,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 											<div class="task-details__meta">
 												<p><span>Title</span> <?php echo htmlspecialchars($task['title'], ENT_QUOTES); ?></p>
 												<p><span>Status:</span> <?php echo htmlspecialchars($statusLabel, ENT_QUOTES); ?></p>
+												<p><span>Manager review:</span> <?php echo htmlspecialchars(ucfirst($task['manager_status']), ENT_QUOTES); ?></p>
 												<p><span>Priority:</span> <?php echo htmlspecialchars(ucfirst($task['priority']), ENT_QUOTES); ?></p>
 												<p><span>Due:</span> <?php echo htmlspecialchars($scheduledLabel, ENT_QUOTES); ?></p>
 												<p><span>Assigned:</span> <?php echo htmlspecialchars($assignedLabel, ENT_QUOTES); ?></p>

@@ -25,6 +25,7 @@ if (isset($conn) && $conn instanceof mysqli) {
 	log_audit_event($conn, $actorId, 'logout', 'authentication', $entityId, $details);
 }
 
+clear_jwt_cookie();
 reset_session_state();
 $_SESSION['auth_notice'] = $logoutMessage;
 

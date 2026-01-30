@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
-$currentUser = require_login(['admin']);
+$currentUser = enforce_sensitive_route_guard($conn);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
@@ -196,13 +196,22 @@ $logoutToken = generate_csrf_token('logout_form');
 			}
 
 			.intro {
-				max-width: 640px;
+				max-width: 720px;
 				margin-bottom: 2rem;
 			}
 
 			.intro p {
 				color: var(--muted);
 				line-height: 1.6;
+			}
+
+			.callout {
+				margin-top: 1.25rem;
+				padding: 1rem 1.25rem;
+				border-left: 4px solid var(--accent);
+				background: rgba(67, 97, 238, 0.08);
+				border-radius: 0.75rem;
+				color: var(--text);
 			}
 
 			.grid {
@@ -212,6 +221,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			}
 
 			.card {
+				display: block;
 				background: var(--card);
 				padding: 1.5rem;
 				border-radius: 1rem;
@@ -348,20 +358,63 @@ $logoutToken = generate_csrf_token('logout_form');
 				</p>
 			</div>
 			<section class="grid">
-				<div class="card">
-					<h2>User Provisioning</h2>
-					<p>Coming soon: invite teammates, assign roles, and revoke access in one place.</p>
-				</div>
-				<div class="card">
-					<h2>System Health</h2>
-					<p>Placeholder metrics for uptime, maintenance windows, and dependency checks.</p>
-				</div>
-				<div class="card">
-					<h2>Approval Queue</h2>
-					<p>Future feed for pending escalations, machine requests, and policy updates.</p>
-				</div>
+				<a class="card" href="admin-users.php">
+					<h2>User Accounts</h2>
+					<p>Create, edit, or remove users across every role with full admin privileges.</p>
+				</a>
+				<a class="card" href="admin-insights.php">
+					<h2>Insights & Reports</h2>
+					<p>Review dashboards, historical bookings, incidents, and maintenance activity in one place.</p>
+				</a>
+				<a class="card" href="admin-equipment-certs.php">
+					<h2>Equipment Certifications</h2>
+					<p>Define which training credentials each machine demands before someone can operate it.</p>
+				</a>
+				<a class="card" href="admin-learning.php">
+					<h2>Learning Repository</h2>
+					<p>Upload, edit, or retire the training assets that surface inside the Learning Space.</p>
+				</a>
+				<a class="card" href="manager.php">
+					<h2>Manager Workspace</h2>
+					<p>Jump into the manager dashboard for scheduling, approvals, and escalations.</p>
+				</a>
+				<a class="card" href="technician.php">
+					<h2>Technician Dispatch</h2>
+					<p>Monitor equipment status, assign work, and close maintenance tasks.</p>
+				</a>
+				<a class="card" href="approve-bookings.php">
+					<h2>Bookings & Waitlists</h2>
+					<p>Review reservations, move the waitlist, and keep utilisation balanced.</p>
+				</a>
+				<a class="card" href="maintenance-approvals.php">
+					<h2>Maintenance Schedules</h2>
+					<p>Authorize technician plans and capture notes for every asset.</p>
+				</a>
+				<a class="card" href="incident-reports.php">
+					<h2>Safety & Incidents</h2>
+					<p>Audit safety submissions and drive follow-up actions.</p>
+				</a>
+				<a class="card" href="analytics-dashboard.php">
+					<h2>Analytics Control Center</h2>
+					<p>View utilisation, safety trends, and maintenance spend in one place.</p>
+				</a>
+				<a class="card" href="book-machines.php">
+					<h2>Equipment Booking Portal</h2>
+					<p>See the learner-facing booking experience exactly as users do.</p>
+				</a>
+				<a class="card" href="learning-space.php">
+					<h2>Learning Space</h2>
+					<p>Manage training content, certifications, and compliance resources.</p>
+				</a>
+				<a class="card" href="report-fault.php">
+					<h2>Fault Reporting Inbox</h2>
+					<p>Submit or triage hazard reports when you need to reproduce user flows.</p>
+				</a>
 			</section>
-			<a class="back-link" href="index.php">Return to main dashboard</a>
+			<div class="callout">
+				<strong>Full-system authority:</strong> You’re signed in as an administrator, so every module and configuration endpoint is available across the platform. Use this hub as your starting point and jump directly into any workspace above.
+			</div>
+			<a class="back-link" href="index.php">Return to learner dashboard</a>
 		</main>
 	</body>
 </html>

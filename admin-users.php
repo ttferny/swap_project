@@ -1,0 +1,924 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/session.php';
+require_once __DIR__ . '/db.php';
+
+$currentUser = enforce_sensitive_route_guard($conn);
+$userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
+if ($userFullName === '') {
+	$userFullName = 'Administrator';
+}
+$roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
+$logoutToken = generate_csrf_token('logout_form');
+$currentUserId = (int) ($currentUser['user_id'] ?? 0);
+
+if (!function_exists('sync_user_equipment_access')) {
+	function sync_user_equipment_access(mysqli $conn, int $userId, array $equipmentIds, int $grantedBy): bool
+	{
+		if ($userId <= 0) {
+			return false;
+		}
+		if (!mysqli_begin_transaction($conn)) {
+			return false;
+		}
+
+		$deleteStmt = mysqli_prepare($conn, 'DELETE FROM user_equipment_access WHERE user_id = ?');
+		if ($deleteStmt === false) {
+			mysqli_rollback($conn);
+			return false;
+		}
+		mysqli_stmt_bind_param($deleteStmt, 'i', $userId);
+		if (!mysqli_stmt_execute($deleteStmt)) {
+			mysqli_stmt_close($deleteStmt);
+			mysqli_rollback($conn);
+			return false;
+		}
+		mysqli_stmt_close($deleteStmt);
+
+		if (!empty($equipmentIds)) {
+			$insertStmt = mysqli_prepare(
+				$conn,
+				'INSERT INTO user_equipment_access (user_id, equipment_id, granted_by) VALUES (?, ?, NULLIF(?, 0))
+				 ON DUPLICATE KEY UPDATE granted_at = CURRENT_TIMESTAMP, granted_by = VALUES(granted_by)'
+			);
+			if ($insertStmt === false) {
+				mysqli_rollback($conn);
+				return false;
+			}
+			$userParam = $userId;
+			$grantorParam = $grantedBy;
+			$equipmentParam = 0;
+			mysqli_stmt_bind_param($insertStmt, 'iii', $userParam, $equipmentParam, $grantorParam);
+			foreach ($equipmentIds as $equipmentId) {
+				$equipmentParam = (int) $equipmentId;
+				if ($equipmentParam <= 0) {
+					continue;
+				}
+				if (!mysqli_stmt_execute($insertStmt)) {
+					mysqli_stmt_close($insertStmt);
+					mysqli_rollback($conn);
+					return false;
+				}
+			}
+			mysqli_stmt_close($insertStmt);
+		}
+
+		if (!mysqli_commit($conn)) {
+			mysqli_rollback($conn);
+			return false;
+		}
+		return true;
+	}
+}
+
+$messages = ['success' => [], 'error' => []];
+
+$equipmentAccessTableSql = <<<SQL
+CREATE TABLE IF NOT EXISTS user_equipment_access (
+	user_id BIGINT(20) NOT NULL,
+	equipment_id BIGINT(20) NOT NULL,
+	granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	granted_by BIGINT(20) DEFAULT NULL,
+	PRIMARY KEY (user_id, equipment_id),
+	KEY fk_uea_equipment (equipment_id),
+	KEY fk_uea_granted_by (granted_by),
+	CONSTRAINT fk_uea_equipment FOREIGN KEY (equipment_id) REFERENCES equipment (equipment_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	CONSTRAINT fk_uea_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE ON UPDATE CASCADE,
+	CONSTRAINT fk_uea_granted_by FOREIGN KEY (granted_by) REFERENCES users (user_id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+SQL;
+
+if (!mysqli_query($conn, $equipmentAccessTableSql)) {
+	$messages['error'][] = 'Equipment access permissions table is unavailable. Please contact system support.';
+}
+
+$equipmentList = [];
+$equipmentLookup = [];
+$equipmentResult = mysqli_query($conn, 'SELECT equipment_id, name, category, risk_level FROM equipment ORDER BY name ASC');
+if ($equipmentResult instanceof mysqli_result) {
+	while ($row = mysqli_fetch_assoc($equipmentResult)) {
+		$equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
+		if ($equipmentId <= 0) {
+			continue;
+		}
+		$name = trim((string) ($row['name'] ?? ''));
+		if ($name === '') {
+			$name = 'Equipment #' . $equipmentId;
+		}
+		$category = trim((string) ($row['category'] ?? ''));
+		$riskLevel = trim((string) ($row['risk_level'] ?? ''));
+		$equipmentList[] = [
+			'id' => $equipmentId,
+			'name' => $name,
+			'category' => $category,
+			'risk_level' => $riskLevel,
+		];
+		$equipmentLookup[$equipmentId] = [
+			'name' => $name,
+			'category' => $category,
+			'risk_level' => $riskLevel,
+		];
+	}
+	mysqli_free_result($equipmentResult);
+}
+
+$normalizeEquipmentSelection = static function ($rawInput) use ($equipmentLookup): array {
+	$clean = [];
+	if (!is_array($rawInput)) {
+		return $clean;
+	}
+	foreach ($rawInput as $value) {
+		$equipmentId = (int) $value;
+		if ($equipmentId > 0 && isset($equipmentLookup[$equipmentId])) {
+			$clean[$equipmentId] = $equipmentId;
+		}
+	}
+	return array_values($clean);
+};
+
+$roles = [];
+$roleLookup = [];
+$rolesResult = mysqli_query($conn, 'SELECT role_id, role_name FROM roles ORDER BY role_name ASC');
+if ($rolesResult instanceof mysqli_result) {
+	while ($row = mysqli_fetch_assoc($rolesResult)) {
+		$roleId = isset($row['role_id']) ? (int) $row['role_id'] : 0;
+		$roleName = trim((string) ($row['role_name'] ?? ''));
+		if ($roleId <= 0 || $roleName === '') {
+			continue;
+		}
+		$roles[] = ['role_id' => $roleId, 'role_name' => $roleName];
+		$roleLookup[$roleId] = $roleName;
+	}
+	mysqli_free_result($rolesResult);
+}
+
+$normalizeRoleLabel = static function (?string $value): string {
+	return strtolower(trim((string) $value));
+};
+
+$getRoleKeyById = static function (int $roleId) use ($roleLookup, $normalizeRoleLabel): string {
+	return $normalizeRoleLabel($roleLookup[$roleId] ?? '');
+};
+
+$isAdminRoleId = static function (int $roleId) use ($getRoleKeyById): bool {
+	return $getRoleKeyById($roleId) === 'admin';
+};
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+	$action = trim((string) ($_POST['action'] ?? ''));
+	if ($action === 'create_user') {
+		$csrfToken = (string) ($_POST['csrf_token'] ?? '');
+		if (!validate_csrf_token('admin_user_create', $csrfToken)) {
+			$messages['error'][] = 'Your create request expired. Please refresh and try again.';
+		} else {
+			$adminNumber = trim((string) ($_POST['tp_admin_no'] ?? ''));
+			$fullName = trim((string) ($_POST['full_name'] ?? ''));
+			$roleId = isset($_POST['role_id']) ? (int) $_POST['role_id'] : 0;
+			$password = (string) ($_POST['password'] ?? '');
+			$selectedEquipment = $normalizeEquipmentSelection($_POST['equipment_access'] ?? []);
+
+			if ($adminNumber === '') {
+				$messages['error'][] = 'Admin number is required.';
+			}
+			if ($fullName === '') {
+				$messages['error'][] = 'Full name is required.';
+			}
+			if ($password === '') {
+				$messages['error'][] = 'Password is required.';
+			}
+			if (!isset($roleLookup[$roleId])) {
+				$messages['error'][] = 'Select a valid role.';
+			}
+
+			if (empty($messages['error'])) {
+				$dupStmt = mysqli_prepare($conn, 'SELECT user_id FROM users WHERE tp_admin_no = ? LIMIT 1');
+				if ($dupStmt === false) {
+					$messages['error'][] = 'Unable to verify admin number uniqueness.';
+				} else {
+					mysqli_stmt_bind_param($dupStmt, 's', $adminNumber);
+					mysqli_stmt_execute($dupStmt);
+					mysqli_stmt_store_result($dupStmt);
+					if (mysqli_stmt_num_rows($dupStmt) > 0) {
+						$messages['error'][] = 'Admin number already exists. Choose another one.';
+					}
+					mysqli_stmt_close($dupStmt);
+				}
+			}
+
+			if (empty($messages['error'])) {
+				$passwordHash = password_hash($password, PASSWORD_DEFAULT);
+				$insertStmt = mysqli_prepare(
+					$conn,
+					'INSERT INTO users (tp_admin_no, full_name, role_id, password_hash) VALUES (?, ?, ?, ?)'
+				);
+				if ($insertStmt === false) {
+					$messages['error'][] = 'Unable to create the user account right now.';
+				} else {
+					mysqli_stmt_bind_param($insertStmt, 'ssis', $adminNumber, $fullName, $roleId, $passwordHash);
+					if (mysqli_stmt_execute($insertStmt)) {
+						$newUserId = (int) mysqli_insert_id($conn);
+						$accessSynced = true;
+						if ($newUserId > 0 && !empty($selectedEquipment)) {
+							$accessSynced = sync_user_equipment_access($conn, $newUserId, $selectedEquipment, $currentUserId);
+						}
+						if ($accessSynced) {
+							$messages['success'][] = 'User account created successfully.';
+						} else {
+							$messages['error'][] = 'User created but equipment access permissions could not be saved.';
+						}
+					} else {
+						$messages['error'][] = 'Failed to save the new user account.';
+					}
+					mysqli_stmt_close($insertStmt);
+				}
+			}
+		}
+	} elseif ($action === 'update_user') {
+		$userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+		$csrfToken = (string) ($_POST['csrf_token'] ?? '');
+		if ($userId <= 0 || !validate_csrf_token('admin_user_update_' . $userId, $csrfToken)) {
+			$messages['error'][] = 'Unable to verify that update request.';
+		} else {
+			$adminNumber = trim((string) ($_POST['tp_admin_no'] ?? ''));
+			$fullName = trim((string) ($_POST['full_name'] ?? ''));
+			$roleId = isset($_POST['role_id']) ? (int) $_POST['role_id'] : 0;
+			$newPassword = trim((string) ($_POST['password'] ?? ''));
+			$selectedEquipment = $normalizeEquipmentSelection($_POST['equipment_access'] ?? []);
+			$targetRow = null;
+			$targetIsAdmin = false;
+
+			$targetStmt = mysqli_prepare($conn, 'SELECT role_id FROM users WHERE user_id = ? LIMIT 1');
+			if ($targetStmt === false) {
+				$messages['error'][] = 'Unable to load that account right now.';
+			} else {
+				mysqli_stmt_bind_param($targetStmt, 'i', $userId);
+				mysqli_stmt_execute($targetStmt);
+				$targetResult = mysqli_stmt_get_result($targetStmt);
+				$targetRow = $targetResult ? mysqli_fetch_assoc($targetResult) : null;
+				if ($targetResult) {
+					mysqli_free_result($targetResult);
+				}
+				mysqli_stmt_close($targetStmt);
+				if (!$targetRow) {
+					$messages['error'][] = 'That user record no longer exists.';
+				} else {
+					$targetRoleId = isset($targetRow['role_id']) ? (int) $targetRow['role_id'] : 0;
+					$targetIsAdmin = $isAdminRoleId($targetRoleId);
+				}
+			}
+
+			if ($adminNumber === '' || $fullName === '' || !isset($roleLookup[$roleId])) {
+				$messages['error'][] = 'Provide a valid admin number, name, and role before saving.';
+			} else {
+				$dupStmt = mysqli_prepare(
+					$conn,
+					'SELECT user_id FROM users WHERE tp_admin_no = ? AND user_id <> ? LIMIT 1'
+				);
+				if ($dupStmt === false) {
+					$messages['error'][] = 'Unable to validate uniqueness for that admin number.';
+				} else {
+					mysqli_stmt_bind_param($dupStmt, 'si', $adminNumber, $userId);
+					mysqli_stmt_execute($dupStmt);
+					mysqli_stmt_store_result($dupStmt);
+					if (mysqli_stmt_num_rows($dupStmt) > 0) {
+						$messages['error'][] = 'Another account already uses that admin number.';
+					}
+					mysqli_stmt_close($dupStmt);
+				}
+			}
+
+			if (empty($messages['error']) && $targetIsAdmin) {
+				if ($userId !== $currentUserId) {
+					$messages['error'][] = 'Administrator accounts can only be modified by the account owner.';
+				}
+				if (!$isAdminRoleId($roleId)) {
+					$messages['error'][] = 'Administrator accounts must retain the Admin role.';
+				}
+			}
+
+			if (empty($messages['error'])) {
+				if ($newPassword !== '') {
+					$passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
+					$updateStmt = mysqli_prepare(
+						$conn,
+						'UPDATE users SET tp_admin_no = ?, full_name = ?, role_id = ?, password_hash = ? WHERE user_id = ?'
+					);
+					if ($updateStmt) {
+						mysqli_stmt_bind_param($updateStmt, 'ssisi', $adminNumber, $fullName, $roleId, $passwordHash, $userId);
+					}
+				} else {
+					$updateStmt = mysqli_prepare(
+						$conn,
+						'UPDATE users SET tp_admin_no = ?, full_name = ?, role_id = ? WHERE user_id = ?'
+					);
+					if ($updateStmt) {
+						mysqli_stmt_bind_param($updateStmt, 'ssii', $adminNumber, $fullName, $roleId, $userId);
+					}
+				}
+
+				$accountUpdated = false;
+				if ($updateStmt === false) {
+					$messages['error'][] = 'Unable to update that account right now.';
+				} else {
+					if (mysqli_stmt_execute($updateStmt)) {
+						$accountUpdated = true;
+					} else {
+						$messages['error'][] = 'Failed to save the user changes.';
+					}
+					mysqli_stmt_close($updateStmt);
+				}
+
+				if ($accountUpdated) {
+					if (!sync_user_equipment_access($conn, $userId, $selectedEquipment, $currentUserId)) {
+						$messages['error'][] = 'Role updated, but equipment access permissions were not saved.';
+					} else {
+						$messages['success'][] = 'User account updated.';
+					}
+				}
+			}
+		}
+	} elseif ($action === 'delete_user') {
+		$userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+		$csrfToken = (string) ($_POST['csrf_token'] ?? '');
+		if ($userId <= 0 || !validate_csrf_token('admin_user_delete_' . $userId, $csrfToken)) {
+			$messages['error'][] = 'Unable to verify the delete request.';
+		} else {
+			$targetRow = null;
+			$targetStmt = mysqli_prepare($conn, 'SELECT role_id FROM users WHERE user_id = ? LIMIT 1');
+			if ($targetStmt === false) {
+				$messages['error'][] = 'Unable to load that account right now.';
+			} else {
+				mysqli_stmt_bind_param($targetStmt, 'i', $userId);
+				mysqli_stmt_execute($targetStmt);
+				$targetResult = mysqli_stmt_get_result($targetStmt);
+				$targetRow = $targetResult ? mysqli_fetch_assoc($targetResult) : null;
+				if ($targetResult) {
+					mysqli_free_result($targetResult);
+				}
+				mysqli_stmt_close($targetStmt);
+				if (!$targetRow) {
+					$messages['error'][] = 'No matching account was found to delete.';
+				} elseif ($isAdminRoleId((int) ($targetRow['role_id'] ?? 0))) {
+					$messages['error'][] = 'Administrator accounts cannot be deleted.';
+				}
+			}
+
+			if (empty($messages['error'])) {
+				$deleteStmt = mysqli_prepare($conn, 'DELETE FROM users WHERE user_id = ? LIMIT 1');
+				if ($deleteStmt === false) {
+					$messages['error'][] = 'Unable to delete that account right now.';
+				} else {
+					mysqli_stmt_bind_param($deleteStmt, 'i', $userId);
+					if (mysqli_stmt_execute($deleteStmt) && mysqli_stmt_affected_rows($deleteStmt) === 1) {
+						$messages['success'][] = 'User account removed.';
+					} else {
+						$messages['error'][] = 'No account was removed. It may have already been deleted.';
+					}
+					mysqli_stmt_close($deleteStmt);
+				}
+			}
+		}
+	}
+}
+
+$users = [];
+$usersResult = mysqli_query(
+	$conn,
+	'  SELECT u.user_id, u.tp_admin_no, u.full_name, u.role_id, r.role_name
+	   FROM users u
+	   INNER JOIN roles r ON r.role_id = u.role_id
+	   ORDER BY u.user_id ASC'
+);
+if ($usersResult instanceof mysqli_result) {
+	while ($row = mysqli_fetch_assoc($usersResult)) {
+		$users[] = $row;
+	}
+	mysqli_free_result($usersResult);
+}
+
+$userEquipmentMap = [];
+$accessResult = mysqli_query($conn, 'SELECT user_id, equipment_id FROM user_equipment_access');
+if ($accessResult instanceof mysqli_result) {
+	while ($row = mysqli_fetch_assoc($accessResult)) {
+		$userId = isset($row['user_id']) ? (int) $row['user_id'] : 0;
+		$equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
+		if ($userId <= 0 || $equipmentId <= 0) {
+			continue;
+		}
+		if (!isset($userEquipmentMap[$userId])) {
+			$userEquipmentMap[$userId] = [];
+		}
+		$userEquipmentMap[$userId][$equipmentId] = true;
+	}
+	mysqli_free_result($accessResult);
+}
+
+$createToken = generate_csrf_token('admin_user_create');
+?>
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>User Accounts | Admin Control</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+			rel="stylesheet"
+		/>
+		<style>
+			:root {
+				--bg: #f8fbff;
+				--card: #ffffff;
+				--text: #0f172a;
+				--muted: #64748b;
+				--accent: #4361ee;
+				--danger: #dc2626;
+				--border: #e2e8f0;
+				font-size: 16px;
+			}
+
+			* {
+				box-sizing: border-box;
+			}
+
+			body {
+				margin: 0;
+				font-family: "Space Grotesk", "Segoe UI", Tahoma, sans-serif;
+				color: var(--text);
+				background: radial-gradient(circle at top, #eef3ff, var(--bg));
+				min-height: 100vh;
+			}
+
+			header {
+				padding: 1.5rem clamp(1.5rem, 5vw, 4rem);
+				background: var(--card);
+				border-bottom: 1px solid var(--border);
+				box-shadow: 0 24px 45px rgba(67, 97, 238, 0.12);
+				position: sticky;
+				top: 0;
+				z-index: 10;
+			}
+
+			main {
+				padding: clamp(2rem, 5vw, 4rem);
+			}
+
+			.grid-two {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+				gap: 1.5rem;
+				margin-bottom: 2rem;
+			}
+
+			.card {
+				background: var(--card);
+				border: 1px solid var(--border);
+				border-radius: 1rem;
+				padding: 1.5rem;
+				box-shadow: 0 18px 35px rgba(15, 23, 42, 0.08);
+			}
+
+			.card h2 {
+				margin-top: 0;
+			}
+
+			label {
+				display: flex;
+				flex-direction: column;
+				gap: 0.35rem;
+				font-size: 0.9rem;
+				font-weight: 600;
+				color: var(--muted);
+			}
+
+			input,
+			select {
+				border: 1px solid var(--border);
+				border-radius: 0.75rem;
+				padding: 0.55rem 0.75rem;
+				font-family: inherit;
+				font-size: 0.95rem;
+			}
+
+			button {
+				border: none;
+				border-radius: 0.75rem;
+				padding: 0.6rem 1.2rem;
+				font-weight: 600;
+				cursor: pointer;
+			}
+
+			button.primary {
+				background: var(--accent);
+				color: #fff;
+			}
+
+			button.danger {
+				background: var(--danger);
+				color: #fff;
+			}
+
+			.muted-text {
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+
+			.equipment-selector {
+				margin-top: 1.25rem;
+				border: 1px solid var(--border);
+				border-radius: 1rem;
+				padding: 1rem;
+				background: #f8fafc;
+			}
+
+			.selector-heading {
+				margin: 0;
+				font-size: 0.95rem;
+				font-weight: 600;
+			}
+
+			.selector-note {
+				margin: 0.2rem 0 0.9rem;
+				color: var(--muted);
+				font-size: 0.85rem;
+			}
+
+			.equipment-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+				gap: 0.65rem;
+			}
+
+			.equipment-option {
+				display: flex;
+				flex-direction: row;
+				align-items: flex-start;
+				gap: 0.6rem;
+				padding: 0.55rem 0.65rem;
+				border-radius: 0.85rem;
+				border: 1px solid rgba(67, 97, 238, 0.2);
+				background: rgba(67, 97, 238, 0.05);
+				font-weight: 600;
+				color: var(--text);
+			}
+
+			.equipment-option input {
+				margin-top: 0.35rem;
+				flex-shrink: 0;
+			}
+
+			.equip-meta {
+				display: block;
+				font-weight: 500;
+				font-size: 0.8rem;
+				color: var(--muted);
+			}
+
+			.access-manager details {
+				border: 1px solid var(--border);
+				border-radius: 0.9rem;
+				padding: 0.85rem;
+				background: #f8fafc;
+				transition: box-shadow 0.2s ease;
+			}
+
+			.access-manager summary {
+				cursor: pointer;
+				font-weight: 600;
+				color: var(--accent);
+				outline: none;
+			}
+
+			.access-manager summary::-webkit-details-marker {
+				color: var(--accent);
+			}
+
+			.access-manager details[open] {
+				background: #fff;
+				box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+			}
+
+			.equipment-taglist {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.4rem;
+				margin-top: 0.6rem;
+			}
+
+			.equipment-tag {
+				padding: 0.18rem 0.6rem;
+				border-radius: 999px;
+				background: rgba(67, 97, 238, 0.12);
+				font-size: 0.78rem;
+				font-weight: 600;
+				color: var(--accent);
+			}
+
+			.equipment-tag.muted-tag {
+				background: rgba(100, 116, 139, 0.18);
+				color: var(--muted);
+			}
+
+			table {
+				width: 100%;
+				border-collapse: collapse;
+				background: var(--card);
+				border: 1px solid var(--border);
+				border-radius: 1rem;
+				overflow: hidden;
+				box-shadow: 0 20px 45px rgba(15, 23, 42, 0.1);
+			}
+
+			thead {
+				background: rgba(67, 97, 238, 0.08);
+			}
+
+			th,
+			td {
+				padding: 0.85rem 1rem;
+				text-align: left;
+				border-bottom: 1px solid var(--border);
+			}
+
+			tbody tr:last-child td {
+				border-bottom: none;
+			}
+
+			.actions {
+				display: flex;
+				gap: 0.5rem;
+				flex-wrap: wrap;
+			}
+
+			.notice {
+				margin-bottom: 1rem;
+				padding: 0.85rem 1rem;
+				border-radius: 0.75rem;
+				font-weight: 600;
+			}
+
+			.notice.success {
+				background: #ecfdf5;
+				color: #065f46;
+			}
+
+			.notice.error {
+				background: #fef2f2;
+				color: #991b1b;
+			}
+
+			@media (max-width: 768px) {
+				table,
+				thead,
+				tbody,
+				th,
+				td,
+				tr {
+					display: block;
+				}
+
+				thead {
+					display: none;
+				}
+
+				td {
+					border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+				}
+
+				td::before {
+					content: attr(data-label);
+					display: block;
+					font-size: 0.8rem;
+					color: var(--muted);
+					text-transform: uppercase;
+					letter-spacing: 0.05em;
+					margin-bottom: 0.2rem;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+			<h1 style="margin: 0; font-size: clamp(1.5rem, 3vw, 2.4rem);">User Accounts Control</h1>
+			<p style="margin: 0.35rem 0 0; color: var(--muted);">
+				Signed in as <?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?> (<?php echo htmlspecialchars($roleDisplay, ENT_QUOTES); ?>)
+			</p>
+		</header>
+		<main>
+			<?php foreach (['success', 'error'] as $type): ?>
+				<?php foreach ($messages[$type] as $message): ?>
+					<div class="notice <?php echo $type; ?>"><?php echo htmlspecialchars($message, ENT_QUOTES); ?></div>
+				<?php endforeach; ?>
+			<?php endforeach; ?>
+
+			<div class="grid-two">
+				<div class="card">
+					<h2>Create New User</h2>
+					<form method="post">
+						<input type="hidden" name="action" value="create_user" />
+						<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($createToken, ENT_QUOTES); ?>" />
+						<label>
+							Admin Number
+							<input type="text" name="tp_admin_no" required />
+						</label>
+						<label>
+							Full Name
+							<input type="text" name="full_name" required />
+						</label>
+						<label>
+							Role
+							<select name="role_id" required>
+								<option value="">Select a role</option>
+								<?php foreach ($roles as $role): ?>
+									<option value="<?php echo (int) $role['role_id']; ?>">
+										<?php echo htmlspecialchars($role['role_name'], ENT_QUOTES); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+						</label>
+						<label>
+							Temporary Password
+							<input type="password" name="password" required />
+						</label>
+						<?php if (!empty($equipmentList)): ?>
+							<div class="equipment-selector">
+								<p class="selector-heading">Equipment Access (optional)</p>
+								<p class="selector-note">Select the machines or spaces this user can book or operate.</p>
+								<div class="equipment-grid">
+									<?php foreach ($equipmentList as $equipment): ?>
+										<?php $createEquipId = 'create-equip-' . (int) $equipment['id']; ?>
+										<label class="equipment-option" for="<?php echo htmlspecialchars($createEquipId, ENT_QUOTES); ?>">
+											<input type="checkbox" id="<?php echo htmlspecialchars($createEquipId, ENT_QUOTES); ?>" name="equipment_access[]" value="<?php echo (int) $equipment['id']; ?>" />
+											<div>
+												<strong><?php echo htmlspecialchars($equipment['name'], ENT_QUOTES); ?></strong>
+												<span class="equip-meta">
+													<?php echo htmlspecialchars($equipment['category'] !== '' ? $equipment['category'] : 'General access', ENT_QUOTES); ?>
+													<?php if (($equipment['risk_level'] ?? '') !== ''): ?>
+														&bull; <?php echo htmlspecialchars(ucfirst((string) $equipment['risk_level']), ENT_QUOTES); ?> risk
+													<?php endif; ?>
+												</span>
+											</div>
+										</label>
+									<?php endforeach; ?>
+								</div>
+							</div>
+						<?php else: ?>
+							<p class="muted-text">No equipment records available yet. Add equipment to assign access permissions.</p>
+						<?php endif; ?>
+						<button type="submit" class="primary">Create User</button>
+					</form>
+				</div>
+				<div class="card">
+					<h2>Platform Shortcuts</h2>
+					<p>Need to impersonate a role or verify user journeys? Use the quick links below to jump directly into each workspace.</p>
+					<ul style="margin: 1rem 0 0; padding-left: 1.2rem; color: var(--muted); line-height: 1.6;">
+						<li><a href="manager.php">Manager Workspace</a></li>
+						<li><a href="technician.php">Technician Console</a></li>
+						<li><a href="book-machines.php">Learner Booking Portal</a></li>
+						<li><a href="learning-space.php">Learning Space</a></li>
+					</ul>
+				</div>
+			</div>
+
+			<?php if (empty($users)): ?>
+				<p style="color: var(--muted);">No users found in the system.</p>
+			<?php else: ?>
+				<table>
+					<thead>
+						<tr>
+							<th>ID</th>
+							<th>Admin Number</th>
+							<th>Full Name</th>
+							<th>Role</th>
+							<th>Equipment Access</th>
+							<th>Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ($users as $user): ?>
+							<?php
+								$userId = (int) ($user['user_id'] ?? 0);
+								$updateToken = generate_csrf_token('admin_user_update_' . $userId);
+								$deleteToken = generate_csrf_token('admin_user_delete_' . $userId);
+								$updateFormId = 'update-user-' . $userId;
+								$deleteFormId = 'delete-user-' . $userId;
+								$assignedEquipmentIds = array_keys($userEquipmentMap[$userId] ?? []);
+								$assignedNames = [];
+								foreach ($assignedEquipmentIds as $assignedEquipmentId) {
+									$assignedNames[] = $equipmentLookup[$assignedEquipmentId]['name'] ?? ('Equipment #' . $assignedEquipmentId);
+								}
+								$assignedCount = count($assignedNames);
+								$summaryLabel = $assignedCount === 0 ? 'No assets assigned' : $assignedCount . ' asset' . ($assignedCount === 1 ? '' : 's');
+								$previewTags = array_slice($assignedNames, 0, 3);
+								$remainingTagCount = max(0, $assignedCount - count($previewTags));
+								$rowRoleKey = $normalizeRoleLabel($user['role_name'] ?? '');
+								$rowIsAdmin = $rowRoleKey === 'admin';
+								$isSelfRow = $userId === $currentUserId;
+								$lockAdminRow = $rowIsAdmin && !$isSelfRow;
+							?>
+							<form id="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>" method="post">
+								<input type="hidden" name="action" value="update_user" />
+								<input type="hidden" name="user_id" value="<?php echo $userId; ?>" />
+								<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($updateToken, ENT_QUOTES); ?>" />
+							</form>
+							<form id="<?php echo htmlspecialchars($deleteFormId, ENT_QUOTES); ?>" method="post">
+								<input type="hidden" name="action" value="delete_user" />
+								<input type="hidden" name="user_id" value="<?php echo $userId; ?>" />
+								<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($deleteToken, ENT_QUOTES); ?>" />
+							</form>
+							<tr>
+								<td data-label="ID"><?php echo $userId; ?></td>
+								<td data-label="Admin Number">
+									<input type="text" name="tp_admin_no" form="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>" value="<?php echo htmlspecialchars((string) ($user['tp_admin_no'] ?? ''), ENT_QUOTES); ?>" required <?php echo $lockAdminRow ? 'disabled="disabled"' : ''; ?> />
+								</td>
+								<td data-label="Full Name">
+									<input type="text" name="full_name" form="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>" value="<?php echo htmlspecialchars((string) ($user['full_name'] ?? ''), ENT_QUOTES); ?>" required <?php echo $lockAdminRow ? 'disabled="disabled"' : ''; ?> />
+								</td>
+								<td data-label="Role">
+									<select name="role_id" form="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>" required <?php echo $lockAdminRow ? 'disabled="disabled"' : ''; ?>>
+										<?php foreach ($roles as $role): ?>
+											<option value="<?php echo (int) $role['role_id']; ?>" <?php echo (int) ($user['role_id'] ?? 0) === (int) $role['role_id'] ? 'selected' : ''; ?>>
+												<?php echo htmlspecialchars($role['role_name'], ENT_QUOTES); ?>
+											</option>
+										<?php endforeach; ?>
+									</select>
+								</td>
+								<td data-label="Equipment Access">
+									<div class="access-manager">
+										<details>
+											<summary><?php echo htmlspecialchars($summaryLabel, ENT_QUOTES); ?></summary>
+											<?php if (!empty($equipmentList)): ?>
+												<div class="equipment-grid" style="margin-top: 0.8rem;">
+													<?php foreach ($equipmentList as $equipment): ?>
+														<?php
+															$eqId = (int) $equipment['id'];
+															$checkboxId = 'equip-' . $userId . '-' . $eqId;
+															$isChecked = isset($userEquipmentMap[$userId][$eqId]);
+														?>
+														<label class="equipment-option" for="<?php echo htmlspecialchars($checkboxId, ENT_QUOTES); ?>">
+															<input
+																type="checkbox"
+																id="<?php echo htmlspecialchars($checkboxId, ENT_QUOTES); ?>"
+																name="equipment_access[]"
+																form="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>"
+																value="<?php echo $eqId; ?>"
+																<?php echo $isChecked ? 'checked' : ''; ?>
+																<?php echo $lockAdminRow ? 'disabled="disabled"' : ''; ?>
+															/>
+															<div>
+																<strong><?php echo htmlspecialchars($equipment['name'], ENT_QUOTES); ?></strong>
+																<span class="equip-meta">
+																	<?php echo htmlspecialchars($equipment['category'] !== '' ? $equipment['category'] : 'General access', ENT_QUOTES); ?>
+																	<?php if (($equipment['risk_level'] ?? '') !== ''): ?>
+																		&bull; <?php echo htmlspecialchars(ucfirst((string) $equipment['risk_level']), ENT_QUOTES); ?> risk
+																	<?php endif; ?>
+																</span>
+															</div>
+														</label>
+													<?php endforeach; ?>
+												</div>
+											<?php else: ?>
+												<p class="muted-text" style="margin-top: 0.6rem;">No equipment records available.</p>
+											<?php endif; ?>
+										</details>
+										<div class="equipment-taglist">
+											<?php if (empty($previewTags)): ?>
+												<span class="equipment-tag muted-tag">None assigned</span>
+											<?php else: ?>
+												<?php foreach ($previewTags as $tagName): ?>
+													<span class="equipment-tag"><?php echo htmlspecialchars($tagName, ENT_QUOTES); ?></span>
+												<?php endforeach; ?>
+												<?php if ($remainingTagCount > 0): ?>
+													<span class="equipment-tag">+<?php echo $remainingTagCount; ?> more</span>
+												<?php endif; ?>
+											<?php endif; ?>
+										</div>
+									</div>
+								</td>
+								<td data-label="Actions">
+									<div class="actions">
+										<label style="margin: 0; width: 220px;">
+											<span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);">New Password (optional)</span>
+											<input type="password" name="password" form="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>" placeholder="Leave blank to keep" <?php echo $lockAdminRow ? 'disabled="disabled"' : ''; ?> />
+										</label>
+										<button type="submit" form="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>" class="primary" <?php echo $lockAdminRow ? 'disabled="disabled" title="Administrator accounts can only be changed by the account owner."' : ''; ?>>Save</button>
+										<button type="submit" form="<?php echo htmlspecialchars($deleteFormId, ENT_QUOTES); ?>" class="danger" onclick="return confirm('Delete this user? This cannot be undone.');" <?php echo $rowIsAdmin ? 'disabled="disabled" title="Administrator accounts cannot be deleted."' : ''; ?>>Delete</button>
+									</div>
+									<?php if ($lockAdminRow): ?>
+										<p class="muted-text" style="margin: 0.4rem 0 0;">Administrator accounts can only be changed by the account owner.</p>
+									<?php endif; ?>
+									<?php if ($rowIsAdmin): ?>
+										<p class="muted-text" style="margin: 0.2rem 0 0;">Administrator accounts cannot be deleted.</p>
+									<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
+		</main>
+	</body>
+</html>

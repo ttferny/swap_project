@@ -355,6 +355,10 @@ $logoutToken = generate_csrf_token('logout_form');
 					<h2>Safety Incidents</h2>
 					<p>Open the incident log to review every submitted report and its status.</p>
 				</a>
+				<a class="card" href="maintenance-approvals.php">
+					<h2>Maintenance Schedules</h2>
+					<p>Review technician-submitted service plans and approve or send back feedback.</p>
+				</a>
 				<a class="card" href="analytics-dashboard.php">
 					<h2>Analytics Dashboard</h2>
 					<p>Track equipment utilisation and safety trends in one place.</p>

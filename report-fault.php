@@ -16,6 +16,12 @@ $reportMessages = [
 	'success' => [],
 	'error' => [],
 ];
+$userEquipmentAccessMap = [];
+$limitEquipmentScope = false;
+if ($currentUserId > 0) {
+	$userEquipmentAccessMap = get_user_equipment_access_map($conn, $currentUserId);
+	$limitEquipmentScope = !empty($userEquipmentAccessMap);
+}
 
 $formValues = [
 	'equipment_id' => 'general',
@@ -37,6 +43,9 @@ if ($equipmentResult === false) {
 		if ($equipmentId <= 0) {
 			continue;
 		}
+		if ($limitEquipmentScope && !isset($userEquipmentAccessMap[$equipmentId])) {
+			continue;
+		}
 		$name = trim((string) ($row['name'] ?? ''));
 		$location = trim((string) ($row['location'] ?? ''));
 		$equipment[] = [
@@ -50,6 +59,10 @@ if ($equipmentResult === false) {
 		];
 	}
 	mysqli_free_result($equipmentResult);
+}
+
+if ($limitEquipmentScope && $equipmentError === null && empty($equipment)) {
+	$equipmentError = 'No machines are currently assigned to your account. You can still submit a general area report.';
 }
 
 $severityOptions = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'critical' => 'Critical'];
@@ -102,6 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 		if ($equipmentIdValue <= 0 || !isset($equipmentById[$equipmentIdValue])) {
 			$reportMessages['error'][] = 'Select a valid machine.';
 		} else {
+			if ($limitEquipmentScope && !isset($userEquipmentAccessMap[$equipmentIdValue])) {
+				$reportMessages['error'][] = 'You are not authorized to report incidents for that machine.';
+			}
 			$resolvedLocation = (string) ($equipmentById[$equipmentIdValue]['name'] ?? '');
 		}
 	}
@@ -117,9 +133,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 	}
 
 	if (empty($reportMessages['error'])) {
+		$encryptedLocation = encrypt_sensitive_value($resolvedLocation);
+		$encryptedDescription = encrypt_sensitive_value($formValues['description']);
+		$severityParam = $formValues['severity'];
+		$categoryParam = $formValues['category'];
 		$insertStmt = mysqli_prepare(
 			$conn,
-			"INSERT INTO incidents (reported_by, equipment_id, severity, category, location, description) VALUES (?, NULLIF(?, 0), ?, ?, NULLIF(?, ''), ?)"
+			'INSERT INTO incidents (reported_by, equipment_id, severity, category, location, description) VALUES (?, NULLIF(?, 0), ?, ?, ?, ?)'
 		);
 		if ($insertStmt) {
 			mysqli_stmt_bind_param(
@@ -127,10 +147,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 				'iissss',
 				$currentUserId,
 				$equipmentIdValue,
-				$formValues['severity'],
-				$formValues['category'],
-				$resolvedLocation,
-				$formValues['description']
+				$severityParam,
+				$categoryParam,
+				$encryptedLocation,
+				$encryptedDescription
 			);
 			if (mysqli_stmt_execute($insertStmt)) {
 				$incidentId = mysqli_insert_id($conn) ?: null;
