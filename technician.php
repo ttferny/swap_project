@@ -247,6 +247,7 @@ $newTaskFormDefaults = [
 	'equipment_id' => '',
 	'title' => '',
 	'description' => '',
+	'scheduled_for' => '',
 	'task_type' => 'corrective',
 	'priority' => 'medium',
 ];
@@ -255,6 +256,7 @@ $newTaskError = null;
 $newTaskNotice = null;
 $lastUpdatedEquipmentId = null;
 $shouldLoadStatusSnapshot = true;
+$minRequestDate = (new DateTimeImmutable('today'))->modify('+3 days')->format('Y-m-d');
 $taskFlash = flash_retrieve('technician.tasks');
 if (is_array($taskFlash) && isset($taskFlash['messages']) && is_array($taskFlash['messages'])) {
 	foreach (['success', 'error'] as $type) {
@@ -305,6 +307,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			'equipment_id' => trim((string) ($_POST['equipment_id'] ?? '')),
 			'title' => trim((string) ($_POST['title'] ?? '')),
 			'description' => trim((string) ($_POST['description'] ?? '')),
+			'scheduled_for' => trim((string) ($_POST['scheduled_for'] ?? '')),
 			'task_type' => strtolower(trim((string) ($_POST['task_type'] ?? ''))),
 			'priority' => strtolower(trim((string) ($_POST['priority'] ?? ''))),
 		];
@@ -345,6 +348,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		} elseif (mb_strlen($description) > 2000) {
 			$validationErrors[] = 'Description must be 2000 characters or fewer.';
 		}
+		$scheduledForInput = $newTaskFormState['scheduled_for'];
+		if ($scheduledForInput === '') {
+			$validationErrors[] = 'Select a maintenance date.';
+		} else {
+			$scheduledDate = DateTimeImmutable::createFromFormat('Y-m-d', $scheduledForInput);
+			$scheduledErrors = DateTimeImmutable::getLastErrors();
+			if ($scheduledDate === false || ($scheduledErrors['warning_count'] ?? 0) > 0 || ($scheduledErrors['error_count'] ?? 0) > 0) {
+				$validationErrors[] = 'Select a valid maintenance date.';
+			} else {
+				$minDate = (new DateTimeImmutable('today'))->modify('+3 days');
+				if ($scheduledDate < $minDate) {
+					$validationErrors[] = 'Maintenance date must be at least 3 days from today.';
+				}
+			}
+		}
 		if (!in_array($newTaskFormState['task_type'], $allowedTaskTypes, true)) {
 			$validationErrors[] = 'Choose a valid task type.';
 		}
@@ -354,8 +372,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		if (empty($validationErrors)) {
 			$insertStmt = mysqli_prepare(
 				$conn,
-				"INSERT INTO maintenance_tasks (equipment_id, title, description, task_type, priority, status, manager_status, created_by)
-				VALUES (?, ?, ?, ?, ?, 'open', 'submitted', ?)"
+				"INSERT INTO maintenance_tasks (equipment_id, title, description, scheduled_for, task_type, priority, status, manager_status, created_by)
+				VALUES (?, ?, ?, ?, ?, ?, 'open', 'submitted', ?)"
 			);
 			if ($insertStmt === false) {
 				$validationErrors[] = 'Unable to submit your request right now.';
@@ -363,14 +381,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				$creatorId = (int) ($currentUser['user_id'] ?? 0);
 				$titleParam = $title;
 				$descriptionParam = $description;
+				$scheduledForParam = $scheduledForInput;
 				$taskTypeParam = $newTaskFormState['task_type'];
 				$priorityParam = $newTaskFormState['priority'];
 				mysqli_stmt_bind_param(
 					$insertStmt,
-					'issssi',
+					'isssssi',
 					$equipmentId,
 					$titleParam,
 					$descriptionParam,
+					$scheduledForParam,
 					$taskTypeParam,
 					$priorityParam,
 					$creatorId
@@ -387,6 +407,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 						$newTaskId,
 						[
 							'equipment_id' => $equipmentId,
+							'scheduled_for' => $scheduledForParam,
 							'task_type' => $taskTypeParam,
 							'priority' => $priorityParam,
 						]
@@ -1152,6 +1173,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				border-radius: 0.85rem;
 				border: 1px solid rgba(249, 115, 22, 0.15);
 				background: rgba(255, 255, 255, 0.6);
+				overflow: hidden;
 			}
 
 			.status-row h3 {
@@ -1202,16 +1224,25 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				align-items: center;
 				gap: 0.45rem;
 				margin-left: auto;
+				max-width: 100%;
+				flex: 1 1 100%;
+				width: 100%;
+				min-width: 0;
 			}
 
 			.status-edit-form select {
+				box-sizing: border-box;
 				border-radius: 0.65rem;
 				border: 1px solid #fed7aa;
 				padding: 0.4rem 0.75rem;
 				background: #fff;
 				font-family: inherit;
 				font-size: 0.9rem;
-				min-width: 150px;
+				min-width: 0;
+				max-width: 100%;
+				flex: 1 1 160px;
+				min-height: 2.25rem;
+				width: 100%;
 			}
 
 			.status-edit-form button {
@@ -1224,6 +1255,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				color: #fff;
 				cursor: pointer;
 				transition: transform 0.2s ease, box-shadow 0.2s ease;
+				width: 100%;
 			}
 
 			.status-edit-form button:hover {
@@ -1252,6 +1284,23 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				padding: 1rem 1.15rem;
 				background: rgba(255, 255, 255, 0.8);
 				box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+				position: relative;
+				overflow: hidden;
+			}
+
+			.task-item-priority-low {
+				background: rgba(34, 197, 94, 0.12);
+				border-color: rgba(34, 197, 94, 0.35);
+			}
+
+			.task-item-priority-medium {
+				background: rgba(251, 191, 36, 0.16);
+				border-color: rgba(251, 191, 36, 0.45);
+			}
+
+			.task-item-priority-high {
+				background: rgba(248, 113, 113, 0.16);
+				border-color: rgba(248, 113, 113, 0.45);
 			}
 
 			.task-item summary {
@@ -1273,6 +1322,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				align-items: flex-start;
 				justify-content: space-between;
 				gap: 0.75rem;
+				padding-right: 5.5rem;
 			}
 
 			.task-item h3 {
@@ -1325,10 +1375,10 @@ if ($selectedHistoryEquipmentRaw !== '') {
 
 			.task-actions {
 				display: flex;
-				align-items: center;
-				flex-wrap: nowrap;
-				justify-content: center;
-				gap: 0.6rem;
+				flex-direction: column;
+				align-items: stretch;
+				justify-content: flex-start;
+				gap: 0.5rem;
 				margin-top: 0.9rem;
 			}
 
@@ -1404,6 +1454,11 @@ if ($selectedHistoryEquipmentRaw !== '') {
 			.task-actions .status-action {
 				padding: 0.5rem 0.9rem;
 				font-size: 0.85rem;
+				width: 100%;
+				text-align: center;
+				display: flex;
+				align-items: center;
+				justify-content: center;
 			}
 
 			.task-actions .status-action--progress {
@@ -1514,31 +1569,35 @@ if ($selectedHistoryEquipmentRaw !== '') {
 			}
 
 			.task-pill {
-				border-radius: 999px;
-				padding: 0.3rem 0.85rem;
-				font-size: 0.8rem;
-				font-weight: 600;
+				position: absolute;
+				top: 0.85rem;
+				right: 0.85rem;
+				border-radius: 0;
+				padding: 0;
+				font-size: 0.78rem;
+				font-weight: 700;
 				text-transform: capitalize;
-				background: var(--accent-soft);
-				color: var(--accent);
-				min-width: 120px;
-				text-align: center;
+				background: transparent;
+				color: var(--text);
+				min-width: 0;
+				text-align: right;
 				white-space: nowrap;
+				box-shadow: none;
 			}
 
 			.task-pill-priority-low {
-				background: rgba(34, 197, 94, 0.18);
-				color: #15803d;
+				background: transparent;
+				color: #0f6d2b;
 			}
 
 			.task-pill-priority-medium {
-				background: rgba(251, 191, 36, 0.2);
-				color: #92400e;
+				background: transparent;
+				color: #8a5b00;
 			}
 
 			.task-pill-priority-high {
-				background: rgba(248, 113, 113, 0.2);
-				color: #b91c1c;
+				background: transparent;
+				color: #b42318;
 			}
 
 			.task-pill-status-open {
@@ -1610,6 +1669,21 @@ if ($selectedHistoryEquipmentRaw !== '') {
 
 				.search-bar input {
 					min-width: 0;
+					width: 100%;
+				}
+
+				.status-row {
+					align-items: stretch;
+				}
+
+				.status-edit-form {
+					width: 100%;
+					margin-left: 0;
+					justify-content: stretch;
+				}
+
+				.status-edit-form select,
+				.status-edit-form button {
 					width: 100%;
 				}
 			}
@@ -1726,6 +1800,18 @@ if ($selectedHistoryEquipmentRaw !== '') {
 								<label for="request-description">Description</label>
 								<textarea id="request-description" name="description" maxlength="2000" required><?php echo htmlspecialchars($newTaskFormState['description'], ENT_QUOTES); ?></textarea>
 								<span class="request-hint">Include observed issues, risks, or details managers should review.</span>
+							</div>
+							<div class="request-field">
+								<label for="request-scheduled">Maintenance date</label>
+								<input
+									type="date"
+									id="request-scheduled"
+									name="scheduled_for"
+									min="<?php echo htmlspecialchars($minRequestDate, ENT_QUOTES); ?>"
+									value="<?php echo htmlspecialchars($newTaskFormState['scheduled_for'], ENT_QUOTES); ?>"
+									required
+								/>
+								<span class="request-hint">Must be at least 3 days from today.</span>
 							</div>
 							<div class="request-field">
 								<label for="request-task-type">Task type</label>
@@ -1854,14 +1940,20 @@ if ($selectedHistoryEquipmentRaw !== '') {
 									$assignedLabel = $task['assigned_to_name'] !== '' ? $task['assigned_to_name'] : 'Unassigned';
 									$statusLabel = ucwords(str_replace('_', ' ', $task['status']));
 									$summary = $task['description'] !== '' ? mb_substr($task['description'], 0, 120) : 'Tap to view full details.';
+									$priorityLabel = match ($task['priority']) {
+										'high' => 'High',
+										'medium' => 'Medium',
+										'low' => 'Low',
+										default => ucfirst($task['priority']),
+									};
 								?>
 								<li>
-									<details class="task-item">
+									<details class="task-item task-item-priority-<?php echo htmlspecialchars($task['priority'], ENT_QUOTES); ?>">
 										<summary>
 											<div class="task-item-header">
 												<h3><?php echo htmlspecialchars($task['equipment_name'], ENT_QUOTES); ?></h3>
 												<span class="task-pill task-pill-priority-<?php echo htmlspecialchars($task['priority'], ENT_QUOTES); ?>">
-													<?php echo htmlspecialchars(ucfirst($task['priority']), ENT_QUOTES); ?> priority
+													<?php echo htmlspecialchars($priorityLabel, ENT_QUOTES); ?>
 												</span>
 											</div>
 											<p class="task-meta">
