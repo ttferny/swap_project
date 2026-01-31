@@ -128,8 +128,7 @@ if (filter_var($candidatePath, FILTER_VALIDATE_URL)) {
 		$downloadName = $remoteName;
 	}
 	$logMaterialDownload('remote_url');
-	header('Location: ' . $candidatePath);
-	exit;
+	emit_redirect_response($candidatePath, 302, false, null);
 }
 
 

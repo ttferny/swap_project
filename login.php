@@ -3,8 +3,22 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
-// Resolve fallback destination for history guard.
-$historyFallback = dashboard_home_path();
+
+// Suppress disclosing server implementation details in responses.
+if (function_exists('header_remove') && !headers_sent()) {
+	header_remove('X-Powered-By');
+	header_remove('Server');
+}
+if (!headers_sent()) {
+	header('Server: secure-gateway');
+}
+
+// Enforce a defense-in-depth CSP tailored to this view.
+if (!headers_sent()) {
+	header(
+		"Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+	);
+}
 
 $adminNumber = '';
 $errors = [];
@@ -209,8 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					];
 					log_audit_event($conn, $actorId, 'login', 'authentication', $entityId, $detailsPayload);
 
-					header('Location: ' . $destination);
-					exit;
+					emit_redirect_response($destination, 302, false);
 				}
 			} else {
 				$errors[] = 'Invalid admin number or password.';
@@ -266,6 +279,8 @@ $csrfToken = generate_csrf_token('login_form');
 		<link
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
+			crossorigin="anonymous"
+			integrity="sha384-GovirIKnGpEtA0sdD2ItoMk8Wbpbs6kc48z1xGvu+4+fJCXwlr8pu0DNQ0oXbgsO"
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
 		<!-- Base styles for the login screen. -->

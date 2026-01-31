@@ -543,6 +543,42 @@ if (!function_exists('sanitize_redirect_target')) {
 	}
 }
 
+if (!function_exists('emit_redirect_response')) {
+		/**
+		 * Send a hard redirect with a near-empty body to avoid leaking stateful data.
+		 */
+		function emit_redirect_response(string $target, int $statusCode = 302, bool $sanitizeTarget = true, ?string $fallback = '/swap_project/index.php'): void
+		{
+			$destination = trim($target);
+			if ($sanitizeTarget) {
+				$destination = sanitize_redirect_target($destination);
+			}
+			if ($destination === '') {
+				$destination = $fallback !== null ? trim($fallback) : '';
+				if ($sanitizeTarget && $destination !== '') {
+					$destination = sanitize_redirect_target($destination);
+				}
+			}
+			if ($destination === '') {
+				$destination = '/swap_project/index.php';
+			}
+			while (ob_get_level() > 0) {
+				@ob_end_clean();
+			}
+			if (!headers_sent()) {
+				if (function_exists('header_remove')) {
+					header_remove('Content-Length');
+				}
+				header('Cache-Control: no-store, no-cache, must-revalidate');
+				header('Pragma: no-cache');
+				header('Content-Type: text/plain; charset=UTF-8');
+				header('Location: ' . $destination, true, $statusCode);
+				header('Content-Length: 0');
+			}
+			exit;
+		}
+	}
+
 if (!function_exists('flash_store')) {
 	// Store a flash message for the next request.
 	function flash_store(string $key, $value): void
@@ -573,8 +609,7 @@ if (!function_exists('redirect_to_current_uri')) {
 	function redirect_to_current_uri(?string $override = null): void
 	{
 		$target = sanitize_redirect_target($override ?? ($_SERVER['REQUEST_URI'] ?? '')) ?: '/swap_project/index.php';
-		header('Location: ' . $target);
-		exit;
+		emit_redirect_response($target, 302, false);
 	}
 }
 
@@ -603,8 +638,7 @@ if (!function_exists('require_login')) {
 		$user = current_user();
 		if ($user === null) {
 			$redirectTarget = sanitize_redirect_target($_SERVER['REQUEST_URI'] ?? '') ?: '/swap_project/index.php';
-			header('Location: login.php?redirect=' . rawurlencode($redirectTarget));
-			exit;
+			emit_redirect_response('login.php?redirect=' . rawurlencode($redirectTarget), 302, false);
 		}
 		if (!empty($allowedRoles)) {
 			$normalized = array_map(static function ($role): string {
@@ -629,8 +663,7 @@ if (!function_exists('redirect_if_authenticated')) {
 		if ($target === '') {
 			$target = '/swap_project/index.php';
 		}
-		header('Location: ' . $target);
-		exit;
+		emit_redirect_response($target, 302, false);
 	}
 }
 
@@ -931,8 +964,7 @@ if (!function_exists('enforce_https_transport')) {
 			return;
 		}
 		$requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '/');
-		header('Location: https://' . $host . $requestUri, true, 301);
-		exit;
+		emit_redirect_response('https://' . $host . $requestUri, 301, false);
 	}
 }
 
@@ -1522,8 +1554,7 @@ if (!function_exists('enforce_single_active_session')) {
 		if ($sessionToken === '') {
 			reset_session_state();
 			$_SESSION['auth_notice'] = 'Please sign in again to continue.';
-			header('Location: login.php');
-			exit;
+			emit_redirect_response('login.php');
 		}
 		$deviceFingerprint = current_device_fingerprint();
 		ensure_user_session_registry($conn);
@@ -1543,8 +1574,7 @@ if (!function_exists('enforce_single_active_session')) {
 		if (!hash_equals((string) $dbToken, $sessionToken)) {
 			reset_session_state();
 			$_SESSION['auth_notice'] = 'You were signed out because this account was accessed from another device.';
-			header('Location: login.php');
-			exit;
+			emit_redirect_response('login.php');
 		}
 		touch_active_user_session($conn, $userId, $deviceFingerprint);
 	}
@@ -1746,8 +1776,7 @@ if (!function_exists('force_reauthentication')) {
 		clear_jwt_cookie();
 		reset_session_state();
 		$_SESSION['auth_notice'] = $message;
-		header('Location: login.php');
-		exit;
+		emit_redirect_response('login.php');
 	}
 }
 

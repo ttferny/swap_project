@@ -13,8 +13,7 @@ $logoutMessage = 'You have been signed out.';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !validate_csrf_token('logout_form', $csrfToken)) {
 	$logoutMessage = 'We could not verify your logout request.';
 	$_SESSION['auth_notice'] = $logoutMessage;
-	header('Location: ' . $redirectTarget);
-	exit;
+	emit_redirect_response($redirectTarget, 302, false);
 }
 
 // Audit and clear active session records.
@@ -39,5 +38,4 @@ clear_jwt_cookie();
 reset_session_state();
 $_SESSION['auth_notice'] = $logoutMessage;
 
-header('Location: ' . $redirectTarget);
-exit;
+emit_redirect_response($redirectTarget, 302, false);
