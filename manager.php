@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce manager console access.
 $currentUser = enforce_capability($conn, 'manager.console');
 $historyFallback = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
@@ -11,8 +12,10 @@ if ($userFullName === '') {
 	$userFullName = 'Guest User';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
 
+// Helper to format booking timestamps for display.
 if (!function_exists('format_manager_booking_time')) {
 	function format_manager_booking_time(?string $timestamp): string
 	{
@@ -32,6 +35,7 @@ if (!function_exists('format_manager_booking_time')) {
 	}
 }
 
+// Load recent past bookings for the history panel.
 $pastBookings = [];
 $pastBookingsError = '';
 $pastBookingsLimit = 8;
@@ -83,6 +87,7 @@ if ($conn instanceof mysqli) {
 			rel="stylesheet"
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
+		<!-- Base styles for manager dashboard. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -462,6 +467,7 @@ if ($conn instanceof mysqli) {
 		</style>
 	</head>
 	<body>
+		<!-- Header with search and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1>Manager Workspace (Preview)</h1>
@@ -530,6 +536,7 @@ if ($conn instanceof mysqli) {
 			</div>
 		</header>
 		<main>
+			<!-- Intro copy and quick navigation. -->
 			<div class="intro">
 				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
@@ -537,6 +544,7 @@ if ($conn instanceof mysqli) {
 					options while resource planning, reporting, and communications modules are built.
 				</p>
 			</div>
+			<!-- Primary manager shortcuts. -->
 			<section class="grid">
 				<a class="card" href="approve-bookings.php">
 					<h2>Approve Booking Requests</h2>
@@ -555,6 +563,7 @@ if ($conn instanceof mysqli) {
 					<p>Track equipment utilisation and safety trends in one place.</p>
 				</a>
 			</section>
+			<!-- Recent past bookings summary. -->
 			<section class="history-panel" aria-labelledby="past-bookings-heading">
 				<div class="history-card">
 					<div class="history-card__header">

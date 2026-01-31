@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce portal access.
 $currentUser = enforce_capability($conn, 'portal.home');
 $historyFallback = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
@@ -11,6 +12,7 @@ if ($userFullName === '') {
 	$userFullName = 'Guest User';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'User'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
 ?>
 <!DOCTYPE html>
@@ -26,6 +28,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			rel="stylesheet"
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
+		<!-- Base styles for the main portal dashboard. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -269,6 +272,7 @@ $logoutToken = generate_csrf_token('logout_form');
 		</style>
 	</head>
 	<body>
+		<!-- Header with search and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1>Welcome to TP AMC's Management System</h1>
@@ -325,6 +329,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			</div>
 		</header>
 		<main>
+			<!-- Intro section welcoming the signed-in user. -->
 			<div class="intro">
 				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
@@ -333,6 +338,7 @@ $logoutToken = generate_csrf_token('logout_form');
 					every size.
 				</p>
 			</div>
+			<!-- Primary navigation cards for the portal. -->
 			<section class="grid">
 				<a class="card" href="/swap_project/book-machines.php">
 					<h2>Book Machines</h2>

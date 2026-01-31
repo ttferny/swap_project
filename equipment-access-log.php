@@ -4,11 +4,14 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Enforce admin access before serving audit-related content.
 enforce_capability($conn, 'admin.core');
 
+// Hard block direct access; audits are accessed via secured database tooling.
 http_response_code(404);
 exit('Audit logs are only available through secured database access.');
 
+// Helper to truncate long detail values for display.
 function truncate_text(string $value, int $limit): string
 {
 	$lengthFn = function_exists('mb_strlen') ? 'mb_strlen' : 'strlen';
@@ -22,6 +25,7 @@ function truncate_text(string $value, int $limit): string
 	return $substrFn($value, 0, $limit - 3) . '...';
 }
 
+// Filter inputs for narrowing audit results.
 $selectedEquipmentId = filter_input(INPUT_GET, 'equipment_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 $actionFilter = trim((string) ($_GET['action'] ?? ''));
 $startDateInput = trim((string) ($_GET['start_date'] ?? ''));
@@ -32,6 +36,7 @@ if ($startDateInput === '') {
 	$startDateInput = $defaultStartDate;
 }
 
+// Build dynamic SQL conditions for audit query.
 $conditions = ["entity_type = 'equipment'"];
 $types = '';
 $params = [];
@@ -64,11 +69,13 @@ if ($endDateInput !== '' && is_valid_date($endDateInput)) {
 	$endDateInput = '';
 }
 
+// Assemble the audit query with filters applied.
 $whereClause = implode(' AND ', $conditions);
 $auditEvents = [];
 $auditError = null;
 $limit = 250;
 
+// Query recent equipment audit activity.
 $sql = "SELECT
 		al.audit_id AS audit_log_id,
 		al.created_at,
@@ -114,6 +121,7 @@ if ($stmt === false) {
 	mysqli_stmt_close($stmt);
 }
 
+// Compute summary metrics for the header cards.
 $uniqueActors = [];
 foreach ($auditEvents as $event) {
 	$actorId = isset($event['actor_user_id']) ? (int) $event['actor_user_id'] : 0;
@@ -124,6 +132,7 @@ foreach ($auditEvents as $event) {
 $uniqueActorsCount = count($uniqueActors);
 $totalEvents = count($auditEvents);
 
+// Load equipment options for the filter dropdown.
 $equipmentOptions = [];
 $equipmentResult = mysqli_query($conn, 'SELECT equipment_id, name FROM equipment ORDER BY name ASC');
 if ($equipmentResult instanceof mysqli_result) {
@@ -144,6 +153,7 @@ if ($equipmentResult instanceof mysqli_result) {
 	mysqli_free_result($equipmentResult);
 }
 
+// Derive label for active equipment filter.
 $activeEquipmentLabel = 'All assets';
 if ($selectedEquipmentId !== null) {
 	foreach ($equipmentOptions as $option) {
@@ -157,6 +167,7 @@ if ($selectedEquipmentId !== null) {
 	}
 }
 
+// Render key/value detail badges from JSON payloads.
 function render_detail_badges(?string $json): array
 {
 	if ($json === null || $json === '') {
@@ -194,6 +205,7 @@ function render_detail_badges(?string $json): array
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<!-- Base styles for audit log view. -->
 		<style>
 			:root {
 				--bg: #f5f7ff;
@@ -424,6 +436,7 @@ function render_detail_badges(?string $json): array
 		</style>
 	</head>
 	<body>
+		<!-- Header with page title and profile menu. -->
 		<header>
 			<div class="navbar">
 				<div>
@@ -446,6 +459,7 @@ function render_detail_badges(?string $json): array
 			</div>
 		</header>
 		<main>
+			<!-- Summary cards for quick audit stats. -->
 			<div class="summary-grid">
 				<div class="summary-card">
 					<h3>Events captured</h3>
@@ -461,6 +475,7 @@ function render_detail_badges(?string $json): array
 				</div>
 			</div>
 
+			<!-- Filters for equipment, action, and date range. -->
 			<section class="filters">
 				<form method="get">
 					<label>
@@ -492,6 +507,7 @@ function render_detail_badges(?string $json): array
 				</form>
 			</section>
 
+			<!-- Audit table or empty/error states. -->
 			<?php if ($auditError !== null): ?>
 				<p style="color: #b45309; font-weight: 600;"><?php echo htmlspecialchars($auditError, ENT_QUOTES); ?></p>
 			<?php elseif (empty($auditEvents)): ?>

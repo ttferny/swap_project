@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce incident reporting access.
 $currentUser = enforce_capability($conn, 'portal.report_fault');
 $dashboardHref = dashboard_home_path($currentUser);
 $historyFallback = $dashboardHref;
@@ -13,11 +14,14 @@ if ($userFullName === '') {
 	$userFullName = 'Student';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'User'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
+// Flash message buckets for report submissions.
 $reportMessages = [
 	'success' => [],
 	'error' => [],
 ];
+// Access scope to restrict equipment list.
 $userEquipmentAccessMap = [];
 $limitEquipmentScope = false;
 if ($currentUserId > 0) {
@@ -26,6 +30,7 @@ if ($currentUserId > 0) {
 		$userEquipmentAccessMap = get_user_equipment_access_map($conn, $currentUserId);
 	}
 }
+// Default form values for the incident report.
 $formValues = [
 	'equipment_id' => '',
 	'severity' => 'low',
@@ -47,6 +52,7 @@ if (is_array($savedMessages)) {
 	}
 }
 
+// Load equipment list for the select control.
 $equipment = [];
 $equipmentById = [];
 $equipmentError = null;
@@ -89,10 +95,12 @@ if (isset($cachedEquipment['error']) && $cachedEquipment['error'] !== null) {
 	}
 }
  
+// Provide a fallback message when no equipment exists.
 if ($equipmentError === null && empty($equipment)) {
 	$equipmentError = 'No machines are currently available to report yet.';
 }
 
+// Label sets for form select options.
 $severityOptions = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'critical' => 'Critical'];
 $categoryOptions = [
 	'near_miss' => 'Near miss',
@@ -103,6 +111,7 @@ $categoryOptions = [
 	'other' => 'Other',
 ];
 
+// Handle incident report submissions.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POST['form_type'] === 'report_incident') {
 	$formValues['equipment_id'] = trim((string) ($_POST['equipment_id'] ?? ''));
 	$formValues['severity'] = trim((string) ($_POST['severity'] ?? $formValues['severity']));
@@ -213,6 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 	redirect_to_current_uri('report-fault.php');
 }
 
+// CSRF token for the report form.
 $csrfToken = generate_csrf_token('report_incident');
 ?>
 <!DOCTYPE html>
@@ -228,6 +238,7 @@ $csrfToken = generate_csrf_token('report_incident');
 			rel="stylesheet"
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
+		<!-- Base styles for the incident report form. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -530,6 +541,7 @@ $csrfToken = generate_csrf_token('report_incident');
 		</style>
 	</head>
 	<body>
+		<!-- Header with search and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1>Report Safety Incident</h1>
@@ -596,6 +608,7 @@ $csrfToken = generate_csrf_token('report_incident');
 			</div>
 		</header>
 		<main>
+			<!-- Intro copy for reporting flow. -->
 			<section class="hero">
 				<h2>Report an Incident or Hazard</h2>
 				<p>
@@ -603,6 +616,7 @@ $csrfToken = generate_csrf_token('report_incident');
 					AMC. Submissions go directly into the incident log for review.
 				</p>
 			</section>
+			<!-- Incident report form card. -->
 			<section class="card" aria-labelledby="incident-form-title">
 				<h2 id="incident-form-title">Incident Report</h2>
 				<p>Please include as much detail as possible so staff can respond quickly.</p>

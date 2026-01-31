@@ -13,6 +13,7 @@ if (!defined('APP_REQUEST_START')) {
 	define('APP_REQUEST_START', microtime(true));
 }
 
+// Core audit logging helper for database + file logs.
 if (!function_exists('log_audit_event')) {
 	function log_audit_event(mysqli $conn, ?int $actorId, string $action, string $entityType, ?int $entityId, array $details = []): void
 	{
@@ -84,6 +85,7 @@ if (!function_exists('log_audit_event')) {
 }
 
 if (!function_exists('is_https_request')) {
+	// Detect HTTPS via server and proxy headers.
 	function is_https_request(): bool
 	{
 		if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
@@ -265,6 +267,7 @@ if (!function_exists('enforce_session_integrity')) {
 }
 
 if (!function_exists('bootstrap_session')) {
+	// Initialize session settings and protect against fixation.
 	function bootstrap_session(): void
 	{
 		if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -300,6 +303,7 @@ if (!function_exists('bootstrap_session')) {
 	}
 }
 
+// Apply runtime security and bootstrap the session early.
 apply_runtime_security_baseline();
 bootstrap_session();
 sanitize_request_input();
@@ -400,6 +404,7 @@ if (!function_exists('record_system_error')) {
 }
 
 if (!function_exists('render_http_error')) {
+	// Centralized error rendering for common HTTP errors.
 	function render_http_error(int $statusCode, ?string $userMessage = null, ?string $userAction = null): void
 	{
 		$allowedStatuses = [400, 403, 404, 429, 500];
@@ -450,6 +455,7 @@ if (!function_exists('render_http_error')) {
 }
 
 if (!function_exists('register_global_error_handlers')) {
+	// Register global error and exception handlers.
 	function register_global_error_handlers(): void
 	{
 		static $registered = false;
@@ -490,6 +496,7 @@ if (!function_exists('register_global_error_handlers')) {
 register_global_error_handlers();
 
 if (!function_exists('current_user')) {
+	// Resolve the current authenticated user from session.
 	function current_user(): ?array
 	{
 		if (!isset($_SESSION['user_id'])) {
@@ -537,6 +544,7 @@ if (!function_exists('sanitize_redirect_target')) {
 }
 
 if (!function_exists('flash_store')) {
+	// Store a flash message for the next request.
 	function flash_store(string $key, $value): void
 	{
 		bootstrap_session();
@@ -548,6 +556,7 @@ if (!function_exists('flash_store')) {
 }
 
 if (!function_exists('flash_retrieve')) {
+	// Retrieve and clear a flash message.
 	function flash_retrieve(string $key, $default = null)
 	{
 		bootstrap_session();
@@ -626,6 +635,7 @@ if (!function_exists('redirect_if_authenticated')) {
 }
 
 if (!function_exists('generate_csrf_token')) {
+	// Generate a per-form CSRF token.
 	function generate_csrf_token(string $formKey): string
 	{
 		bootstrap_session();
@@ -755,6 +765,7 @@ if (!function_exists('record_data_modification_audit')) {
 }
 
 if (!function_exists('apply_security_headers')) {
+	// Apply core security headers (CSP, HSTS, etc.).
 	function apply_security_headers(): void
 	{
 		if (headers_sent()) {
@@ -925,6 +936,7 @@ if (!function_exists('enforce_https_transport')) {
 	}
 }
 
+// Apply transport enforcement, headers, WAF, and rate limits.
 enforce_https_transport();
 apply_security_headers();
 $userToken = isset($_SESSION['user_id']) ? 'user_' . (int) $_SESSION['user_id'] : null;
@@ -1314,6 +1326,7 @@ if (!function_exists('summarize_device_label')) {
 }
 
 if (!function_exists('ensure_user_session_registry')) {
+	// Ensure the active-session registry table exists.
 	function ensure_user_session_registry(mysqli $conn): void
 	{
 		static $ensured = false;
@@ -1586,6 +1599,7 @@ if (!function_exists('get_jwt_secret')) {
 }
 
 if (!function_exists('issue_user_jwt')) {
+	// Issue a signed JWT for the current user.
 	function issue_user_jwt(array $user, int $ttlSeconds = 1800): ?string
 	{
 		$userId = isset($user['user_id']) ? (int) $user['user_id'] : 0;
@@ -1806,6 +1820,7 @@ if (!function_exists('access_control_matrix')) {
 }
 
 if (!function_exists('enforce_capability')) {
+	// Centralized capability enforcement with logging.
 	function enforce_capability(mysqli $conn, string $capabilityKey): array
 	{
 		$matrix = access_control_matrix();
@@ -1865,6 +1880,7 @@ if (!function_exists('enforce_sensitive_route_guard')) {
 }
 
 if (php_sapi_name() !== 'cli' && function_exists('register_performance_budget')) {
+	// Optional performance budget logging per request.
 	$scriptName = (string) ($_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? '');
 	$normalizedLabel = trim($scriptName, '/');
 	if ($normalizedLabel === '') {

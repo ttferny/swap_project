@@ -9,8 +9,10 @@ if (PHP_SAPI !== 'cli') {
     }
 }
 
+// Flag repeat booking requests within a seven-day window.
 function flagBookingIfNecessary(mysqli $conn, ?int $currentUserId, ?int $equipmentId): void
 {
+    // Guard against invalid user or equipment inputs.
     if ($currentUserId <= 0) {
         return;
     }
@@ -19,6 +21,7 @@ function flagBookingIfNecessary(mysqli $conn, ?int $currentUserId, ?int $equipme
         return;
     }
 
+    // Look for repeated requests in the last seven days.
     $recentSql = "SELECT COUNT(*) AS recent_count FROM bookings WHERE requester_id = ? AND equipment_id = ? AND start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
     $recentStmt = mysqli_prepare($conn, $recentSql);
 
@@ -44,6 +47,7 @@ function flagBookingIfNecessary(mysqli $conn, ?int $currentUserId, ?int $equipme
         return;
     }
 
+    // Persist a flag entry when repeat threshold is exceeded.
     $flagStmt = mysqli_prepare(
         $conn,
         "INSERT INTO booking_flags (requester_id, equipment_id, reason_code, created_at) VALUES (?, ?, 'repeat_request', NOW())"
@@ -57,6 +61,7 @@ function flagBookingIfNecessary(mysqli $conn, ?int $currentUserId, ?int $equipme
     mysqli_stmt_execute($flagStmt);
     mysqli_stmt_close($flagStmt);
 
+    // Write an audit entry for the flagged booking.
     $flaggedBookingId = mysqli_insert_id($conn);
     logAuditEntry(
         $conn,
@@ -68,8 +73,10 @@ function flagBookingIfNecessary(mysqli $conn, ?int $currentUserId, ?int $equipme
     );
 }
 
+// Promote the earliest waitlist entry when a booking opens.
 function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = null): void
 {
+    // Load booking slot details to match waitlist entries.
     $bookingStmt = mysqli_prepare(
         $conn,
         ' SELECT equipment_id, start_time, end_time FROM bookings WHERE booking_id = ? LIMIT 1 '
@@ -100,6 +107,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
         return;
     }
 
+    // Find the earliest waitlist request for the same slot.
     $waitlistStmt = mysqli_prepare(
         $conn,
         ' SELECT waitlist_id, user_id, note FROM booking_waitlist WHERE equipment_id = ? AND desired_start = ? AND desired_end = ? ORDER BY created_at ASC LIMIT 1 '
@@ -122,6 +130,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
         return;
     }
 
+    // Re-check slot availability before inserting a promoted booking.
     $slotCheckStmt = mysqli_prepare(
         $conn,
         "SELECT 1 FROM bookings WHERE equipment_id = ? AND status IN ('pending', 'approved') AND start_time < ? AND end_time > ? LIMIT 1"
@@ -146,9 +155,11 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 
     $purpose = function_exists('mb_substr') ? mb_substr($purpose, 0, 255) : substr($purpose, 0, 255);
 
+    // Create booking + delete waitlist entry atomically.
     mysqli_begin_transaction($conn);
     $newBookingId = null;
 
+    // Insert the newly promoted booking.
     $insertStmt = mysqli_prepare(
         $conn,
         "INSERT INTO bookings (equipment_id, requester_id, start_time, end_time, purpose, status, requires_approval) VALUES (?, ?, ?, ?, ?, 'pending', 1)"
@@ -179,6 +190,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
     $newBookingId = mysqli_insert_id($conn) ?: null;
     mysqli_stmt_close($insertStmt);
 
+    // Remove the waitlist entry after successful booking insert.
     $deleteStmt = mysqli_prepare($conn, 'DELETE FROM booking_waitlist WHERE waitlist_id = ?');
     if (!$deleteStmt) {
         mysqli_rollback($conn);
@@ -197,6 +209,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
     mysqli_stmt_close($deleteStmt);
     mysqli_commit($conn);
 
+    // Audit log: booking created from waitlist.
     logAuditEntry(
         $conn,
         $actorId,
@@ -211,6 +224,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
         ]
     );
 
+    // Optional audit event for equipment-level visibility.
     if ($equipmentId > 0 && $newBookingId !== null) {
         log_audit_event(
             $conn,
@@ -227,6 +241,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
         );
     }
 
+    // Audit log: waitlist entry removed after promotion.
     logAuditEntry(
         $conn,
         $actorId,
@@ -240,11 +255,14 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
     );
 }
 
+// Acquire a named MySQL lock to prevent concurrent booking conflicts.
 function acquire_equipment_booking_lock(mysqli $conn, int $equipmentId, float $timeoutSeconds = 0.95): bool
 {
+    // Prevent invalid lock names for missing equipment IDs.
     if ($equipmentId <= 0) {
         return false;
     }
+    // Use a named MySQL lock scoped per equipment.
     $lockName = sprintf('booking_equipment_%d', $equipmentId);
     $lockStmt = mysqli_prepare($conn, 'SELECT GET_LOCK(?, ?)');
     if ($lockStmt === false) {
@@ -258,8 +276,10 @@ function acquire_equipment_booking_lock(mysqli $conn, int $equipmentId, float $t
     return (int) ($lockResult ?? 0) === 1;
 }
 
+// Release the named MySQL lock after booking operations complete.
 function release_equipment_booking_lock(mysqli $conn, int $equipmentId): void
 {
+    // Release the named lock after booking operations complete.
     if ($equipmentId <= 0) {
         return;
     }

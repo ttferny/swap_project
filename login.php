@@ -3,12 +3,14 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
+// Resolve fallback destination for history guard.
 $historyFallback = dashboard_home_path();
 
 $adminNumber = '';
 $errors = [];
 $infoMessages = [];
 
+// Default landing pages per role.
 $roleDestinations = [
 	'admin' => 'admin.php',
 	'manager' => 'manager.php',
@@ -17,6 +19,7 @@ $roleDestinations = [
 	'staff' => 'index.php',
 ];
 
+// Allowlist of safe redirect targets per role.
 $roleAllowedTargets = [
 	'admin' => [
 		'admin.php',
@@ -60,6 +63,7 @@ $roleAllowedTargets = [
 	],
 ];
 
+// Resolve a safe redirect destination based on role and allowlist.
 $resolveDestination = static function (string $roleKey, string $redirectTarget) use ($roleDestinations, $roleAllowedTargets): string {
 	$roleKey = strtolower(trim($roleKey));
 	$defaultDestination = $roleDestinations[$roleKey] ?? 'index.php';
@@ -78,7 +82,9 @@ $resolveDestination = static function (string $roleKey, string $redirectTarget) 
 	return $redirectTarget;
 };
 
+// Normalize incoming redirect targets.
 $redirectTarget = sanitize_redirect_target($_POST['redirect_to'] ?? $_GET['redirect'] ?? '');
+// Short-circuit authenticated users to their dashboard.
 if (is_authenticated()) {
 	$sessionUser = current_user();
 	$roleKey = strtolower(trim((string) ($sessionUser['role_name'] ?? '')));
@@ -107,11 +113,13 @@ if (is_array($loginFlash)) {
 	}
 }
 
+// Throttle state for login attempts.
 $throttleKey = 'login_throttle';
 $maxAttempts = 5;
 $lockSeconds = 300;
 $throttleState = $_SESSION[$throttleKey] ?? ['attempts' => 0, 'locked_until' => 0];
 
+// Handle login submissions.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	$now = time();
 	$lockedUntil = (int) ($throttleState['locked_until'] ?? 0);
@@ -244,6 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	redirect_to_current_uri('login.php');
 }
 
+// CSRF token for login form submission.
 $csrfToken = generate_csrf_token('login_form');
 ?>
 <!DOCTYPE html>
@@ -259,6 +268,7 @@ $csrfToken = generate_csrf_token('login_form');
 			rel="stylesheet"
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
+		<!-- Base styles for the login screen. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -367,6 +377,7 @@ $csrfToken = generate_csrf_token('login_form');
 		</style>
 	</head>
 	<body>
+		<!-- Login form card. -->
 		<main class="card">
 			<h1>Login</h1>
 			<p>Enter your admin number and password to access the dashboard.</p>

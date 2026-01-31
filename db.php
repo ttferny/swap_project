@@ -6,18 +6,22 @@ if (PHP_SAPI !== 'cli') {
         exit;
     }
 }
+// Database connection settings.
 $host = "localhost";
 $user = "root";
 $password = "";
 $database = "tp_amc";
 
+// Initialize the mysqli client with timeouts.
 $mysqli = mysqli_init();
 if ($mysqli !== false) {
     mysqli_options($mysqli, MYSQLI_OPT_CONNECT_TIMEOUT, 5);
     mysqli_options($mysqli, MYSQLI_OPT_READ_TIMEOUT, 8);
 }
+// Establish the database connection.
 $conn = $mysqli ? @mysqli_real_connect($mysqli, $host, $user, $password, $database) ? $mysqli : null : null;
 
+// Fail fast with logging and a friendly error page if connection fails.
 if (!$conn) {
     $errorMessage = 'Database connection failed: ' . mysqli_connect_error();
     if (function_exists('record_system_error')) {
@@ -29,6 +33,7 @@ if (!$conn) {
     die('A fatal error occurred.');
 }
 
+// Ensure schema constraints and session enforcement hooks are applied.
 require_once __DIR__ . '/schema_constraints.php';
 ensure_core_database_constraints($conn);
 if (function_exists('enforce_single_active_session')) {

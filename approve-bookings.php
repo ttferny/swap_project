@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce booking-approval access.
 $currentUser = enforce_capability($conn, 'approvals.bookings');
 enforce_role_access(['admin', 'manager'], $currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
@@ -11,9 +12,11 @@ if ($userFullName === '') {
 	$userFullName = 'Guest User';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
 $decisionCsrfToken = '';
 
+// Page-level state and decision feedback.
 $pageTitle = 'Approve Booking Requests';
 $decisionFeedback = '';
 $decisionFeedbackType = '';
@@ -27,6 +30,7 @@ if (is_array($decisionFlash)) {
 	}
 }
 
+// HTML escape helper for safe output.
 if (!function_exists('h')) {
 	function h($value): string
 	{
@@ -34,6 +38,7 @@ if (!function_exists('h')) {
 	}
 }
 
+// Audit logger for booking actions.
 if (!function_exists('log_audit')) {
 	function log_audit(mysqli $conn, ?int $actorUserId, string $action, string $entityType, int $entityId, array $details = []): void
 	{
@@ -68,6 +73,7 @@ if (!function_exists('log_audit')) {
 	}
 }
 
+// Waitlist promotion helper for rejected bookings.
 if (!function_exists('promote_waitlist_entry')) {
 	function promote_waitlist_entry(mysqli $conn, array $bookingContext, ?int $actorUserId = null): ?string
 	{
@@ -193,9 +199,11 @@ if (!function_exists('promote_waitlist_entry')) {
 	}
 }
 
+// Approver identifiers used in audit trails.
 $currentUserId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : null;
 $approverIdParam = $currentUserId ?? 0;
 
+// Handle direct booking approval/rejection form submissions.
 if (
 	$_SERVER['REQUEST_METHOD'] === 'POST'
 	&& ($_POST['form_context'] ?? '') === 'direct-booking'
@@ -344,7 +352,9 @@ if (
 	redirect_to_current_uri('approve-bookings.php');
 }
 
+// CSRF token for decision forms.
 $decisionCsrfToken = generate_csrf_token('booking_decision_form');
+// Pending bookings feed for approval table.
 $pendingBookings = [];
 $pendingBookingsError = '';
 
@@ -381,6 +391,7 @@ if (isset($conn) && $conn instanceof mysqli) {
 	$pendingBookingsError = 'Database connection unavailable.';
 }
 
+// Waitlist queue feed for secondary table.
 $waitlistEntries = [];
 $waitlistError = '';
 
@@ -417,6 +428,7 @@ if (isset($conn) && $conn instanceof mysqli) {
 	$waitlistError = 'Database connection unavailable.';
 }
 
+// Combined decision workload indicator.
 $decisionCount = count($pendingBookings) + count($waitlistEntries);
 ?>
 <!DOCTYPE html>
@@ -428,6 +440,7 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet" />
+		<!-- Base styles for the booking approval view. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -838,6 +851,7 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 		</style>
 	</head>
 	<body>
+		<!-- Header with search, shortcuts, and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1><?php echo h($pageTitle); ?></h1>
@@ -878,6 +892,7 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 			</div>
 		</header>
 		<main>
+			<!-- Intro text for the approvals workflow. -->
 			<section class="intro">
 				<h2>Review Booking Requests</h2>
 				<p>
@@ -885,11 +900,13 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 					Confirm openings in seconds, align with maintenance windows, and keep disruptions from reaching the floor.
 				</p>
 			</section>
+			<!-- Feedback after an approve/reject action. -->
 			<?php if ($decisionFeedback !== ''): ?>
 				<div class="alert <?php echo h($decisionFeedbackType !== '' ? $decisionFeedbackType : 'info'); ?>">
 					<?php echo h($decisionFeedback); ?>
 				</div>
 			<?php endif; ?>
+			<!-- Pending bookings table with action forms. -->
 			<section class="panel">
 				<h2>Pending Direct Bookings</h2>
 				<p class="helper">Requests already on the ledger that still need a green light.</p>
@@ -950,6 +967,7 @@ $decisionCount = count($pendingBookings) + count($waitlistEntries);
 				<?php endif; ?>
 			</section>
 
+			<!-- Waitlist overview table. -->
 			<section class="panel">
 				<h2>Waitlist Queue</h2>
 				<p class="helper">Entries still waiting for an open slot. Promote or reject with context.</p>

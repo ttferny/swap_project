@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current admin user and dashboard context.
 $currentUser = enforce_capability($conn, 'admin.core');
 $dashboardHref = dashboard_home_path($currentUser);
 $historyFallback = $dashboardHref;
@@ -14,6 +15,7 @@ if ($userFullName === '') {
     $userFullName = 'Administrator';
 }
 
+// Allowed types and labels for training materials.
 $allowedMaterialTypes = [
     'pdf' => 'PDF / Document',
     'video' => 'Video / Lecture',
@@ -22,16 +24,19 @@ $allowedMaterialTypes = [
     'link' => 'External Link',
     'other' => 'Other',
 ];
+// Allowed skill levels for training materials.
 $allowedSkillLevels = [
     'general' => 'General Overview',
     'novice' => 'Beginner / Orientation',
     'intermediate' => 'Intermediate / Operator',
     'advanced' => 'Advanced / Specialist',
 ];
+// Upload limits and storage configuration.
 $maxUploadBytes = 25 * 1024 * 1024;
 $uploadDirectory = __DIR__ . '/uploads';
 $defaultMaterialType = array_key_first($allowedMaterialTypes) ?? 'pdf';
 $defaultSkillLevel = 'general';
+// Flash message handling for create/update/delete actions.
 $messages = ['success' => [], 'error' => []];
 $defaultCreateDraft = [
     'title' => '',
@@ -56,6 +61,7 @@ if (is_array($learningFlash)) {
     }
 }
 
+// Ensure the training materials table has required columns.
 if (!function_exists('ensure_training_material_schema')) {
     function ensure_training_material_schema(mysqli $conn): void
     {
@@ -92,6 +98,7 @@ if (!function_exists('ensure_training_material_schema')) {
 
 ensure_training_material_schema($conn);
 
+// Normalize selected equipment IDs from form submissions.
 if (!function_exists('normalize_material_equipment_selection')) {
     function normalize_material_equipment_selection($rawInput, array $equipmentLookup): array
     {
@@ -109,6 +116,7 @@ if (!function_exists('normalize_material_equipment_selection')) {
     }
 }
 
+// Replace equipment links for a material in a single operation.
 if (!function_exists('apply_material_equipment_links')) {
     function apply_material_equipment_links(mysqli $conn, int $materialId, array $equipmentIds, int $userId): bool
     {
@@ -148,6 +156,7 @@ if (!function_exists('apply_material_equipment_links')) {
     }
 }
 
+// Resolve stored file paths to absolute on-disk paths.
 if (!function_exists('resolve_material_storage_path')) {
     function resolve_material_storage_path(?string $storedPath): ?string
     {
@@ -162,6 +171,7 @@ if (!function_exists('resolve_material_storage_path')) {
     }
 }
 
+// Safely delete uploaded material files within the uploads directory.
 if (!function_exists('delete_material_file')) {
     function delete_material_file(?string $storedPath): void
     {
@@ -180,6 +190,7 @@ if (!function_exists('delete_material_file')) {
     }
 }
 
+// Handle uploads (currently disabled) and return status info.
 if (!function_exists('process_material_upload')) {
     function process_material_upload(?array $fileData, string $uploadDirectory, int $maxBytes): array
     {
@@ -203,6 +214,7 @@ if (!function_exists('process_material_upload')) {
     }
 }
 
+// Load equipment data for linking materials to assets.
 $equipmentOptions = [];
 $equipmentLookup = [];
 $equipmentResult = mysqli_query($conn, 'SELECT equipment_id, name, category FROM equipment ORDER BY name ASC');
@@ -232,6 +244,7 @@ if ($equipmentResult instanceof mysqli_result) {
     $messages['error'][] = 'Unable to load equipment right now. Refresh and try again.';
 }
 
+// Handle create, update, and delete form actions.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string) ($_POST['action'] ?? ''));
 
@@ -565,6 +578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Load all materials for the repository listing.
 $materials = [];
 $materialsResult = mysqli_query($conn, 'SELECT material_id, title, material_type, skill_level, file_url, file_path, version, uploaded_by, created_at, updated_at FROM training_materials ORDER BY updated_at DESC');
 if ($materialsResult instanceof mysqli_result) {
@@ -588,6 +602,7 @@ if ($materialsResult instanceof mysqli_result) {
     mysqli_free_result($materialsResult);
 }
 
+// Build lookup tables for material-to-equipment links.
 $materialEquipmentMap = [];
 $coverageSet = [];
 $mapResult = mysqli_query($conn, 'SELECT material_id, equipment_id FROM equipment_training_materials');
@@ -607,6 +622,7 @@ if ($mapResult instanceof mysqli_result) {
     mysqli_free_result($mapResult);
 }
 
+// Compute repository summary stats for the dashboard.
 $materialCount = count($materials);
 $coveredEquipmentCount = count($coverageSet);
 $unlinkedMaterialCount = 0;
@@ -639,6 +655,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
             rel="stylesheet"
         />
         <script src="assets/js/history-guard.js" defer></script>
+        <!-- Base styles for the learning repository admin page. -->
         <style>
             :root {
                 --bg: #f8fbff;
@@ -961,6 +978,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
         </style>
     </head>
     <body>
+        <!-- Header describing the learning repository purpose. -->
         <header>
             <h1>Learning Repository Control</h1>
             <p>
@@ -969,6 +987,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
             </p>
         </header>
         <main>
+            <!-- Flash alerts for create/update/delete actions. -->
             <?php if (!empty($messages['success']) || !empty($messages['error'])): ?>
                 <div class="flash-stack">
                     <?php foreach ($messages['success'] as $message): ?>
@@ -980,6 +999,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                 </div>
             <?php endif; ?>
 
+            <!-- Create form and repository stats summary. -->
             <div class="panel-grid">
                 <section class="panel">
                     <h2>Add New Material</h2>
@@ -1024,6 +1044,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                             <input type="url" name="file_url" placeholder="https://" value="<?php echo htmlspecialchars($createDraft['file_url'], ENT_QUOTES); ?>" />
                         </label>
                         <p class="hint">Provide at least one source: either upload a file or paste a trusted URL.</p>
+                        <!-- Equipment link selection for the new material. -->
                         <div class="checkbox-grid">
                             <?php if (empty($equipmentOptions)): ?>
                                 <p class="hint">Add equipment records to start linking materials.</p>
@@ -1056,6 +1077,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                         </div>
                     </form>
                 </section>
+                <!-- Snapshot of repository coverage and counts. -->
                 <section class="panel">
                     <h3>Repository Snapshot</h3>
                     <div class="stats-grid">
@@ -1082,6 +1104,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                 </section>
             </div>
 
+            <!-- Repository listing with edit/delete controls. -->
             <section>
                 <h2>Repository Materials</h2>
                 <?php if (empty($materials)): ?>
@@ -1089,9 +1112,11 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                         <p>No training materials yet. Upload a PDF, SOP, or link to start populating the Learning Space.</p>
                     </div>
                 <?php else: ?>
+                    <!-- Material cards with quick actions and inline edit form. -->
                     <div class="material-list">
                         <?php foreach ($materials as $materialId => $material): ?>
                             <?php
+                                // Prepare display labels and action tokens for each material.
                                 $attachedEquipmentIds = array_values($materialEquipmentMap[$materialId] ?? []);
                                 $equipmentBadges = [];
                                 foreach ($attachedEquipmentIds as $equipmentId) {
@@ -1140,6 +1165,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                                         Skill: <?php echo htmlspecialchars($allowedSkillLevels[$material['skill_level']] ?? 'General Overview', ENT_QUOTES); ?>
                                     </span>
                                 </div>
+                                <!-- Inline editor for updating the material. -->
                                 <details class="edit-block">
                                     <summary>Edit this material</summary>
                                     <form method="post" enctype="multipart/form-data">
@@ -1187,6 +1213,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                                             <span>External Link (https://...)</span>
                                             <input type="url" name="file_url" value="<?php echo htmlspecialchars($material['file_url'], ENT_QUOTES); ?>" />
                                         </label>
+                                        <!-- Equipment link selection for updates. -->
                                         <div class="checkbox-grid">
                                             <?php if (empty($equipmentOptions)): ?>
                                                 <p class="hint">No equipment found to link.</p>
@@ -1224,6 +1251,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
                 <?php endif; ?>
             </section>
 
+            <!-- Return to the role-based dashboard. -->
             <a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">&larr; Back to your dashboard</a>
         </main>
     </body>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve the currently authenticated admin user for access control and auditing.
 $currentUser = enforce_capability($conn, 'admin.core');
 $userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
 if ($userFullName === '') {
@@ -12,6 +13,7 @@ if ($userFullName === '') {
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
 
 if (!function_exists('sync_equipment_requirements')) {
+    // Persist equipment-to-certification mappings in a single transaction.
     function sync_equipment_requirements(mysqli $conn, int $equipmentId, array $certIds): bool
     {
         if ($equipmentId <= 0) {
@@ -21,6 +23,7 @@ if (!function_exists('sync_equipment_requirements')) {
             return false;
         }
 
+        // Clear existing requirements before re-inserting the selected certifications.
         $deleteStmt = mysqli_prepare($conn, 'DELETE FROM equipment_required_certs WHERE equipment_id = ?');
         if ($deleteStmt === false) {
             mysqli_rollback($conn);
@@ -34,6 +37,7 @@ if (!function_exists('sync_equipment_requirements')) {
         }
         mysqli_stmt_close($deleteStmt);
 
+        // Insert each selected certification with a prepared statement.
         if (!empty($certIds)) {
             $insertStmt = mysqli_prepare(
                 $conn,
@@ -70,6 +74,7 @@ if (!function_exists('sync_equipment_requirements')) {
     }
 }
 
+// Collect flash messages from redirects.
 $messages = ['success' => [], 'error' => []];
 $certFlash = flash_retrieve('admin_equipment_certs');
 if (is_array($certFlash) && isset($certFlash['messages']) && is_array($certFlash['messages'])) {
@@ -80,6 +85,7 @@ if (is_array($certFlash) && isset($certFlash['messages']) && is_array($certFlash
     }
 }
 
+// Load equipment catalogue for table rendering.
 $equipmentList = [];
 $equipmentLookup = [];
 $equipmentResult = mysqli_query($conn, 'SELECT equipment_id, name, category, risk_level FROM equipment ORDER BY name ASC');
@@ -110,6 +116,7 @@ if ($equipmentResult instanceof mysqli_result) {
     mysqli_free_result($equipmentResult);
 }
 
+// Load certification options available to require.
 $certifications = [];
 $certLookup = [];
 $certResult = mysqli_query($conn, 'SELECT cert_id, name, description FROM certifications ORDER BY name ASC');
@@ -131,6 +138,7 @@ if ($certResult instanceof mysqli_result) {
     mysqli_free_result($certResult);
 }
 
+// Normalize posted certification IDs to a valid, de-duplicated list.
 $normalizeCertSelection = static function ($rawInput) use ($certLookup): array {
     $clean = [];
     if (!is_array($rawInput)) {
@@ -145,6 +153,7 @@ $normalizeCertSelection = static function ($rawInput) use ($certLookup): array {
     return array_values($clean);
 };
 
+// Handle form submissions for syncing requirements.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = trim((string) ($_POST['action'] ?? ''));
     if ($action === 'sync_requirements') {
@@ -179,6 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Build a quick lookup map of existing equipment certification requirements.
 $equipmentCertMap = [];
 $mapResult = mysqli_query($conn, 'SELECT equipment_id, cert_id FROM equipment_required_certs');
 if ($mapResult instanceof mysqli_result) {
@@ -209,6 +219,7 @@ if ($mapResult instanceof mysqli_result) {
             href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
             rel="stylesheet"
         />
+        <!-- Base styles for the admin table layout and controls. -->
         <style>
             :root {
                 --bg: #f8fbff;
@@ -438,6 +449,7 @@ if ($mapResult instanceof mysqli_result) {
         </style>
     </head>
     <body>
+        <!-- Sticky header with page title and summary. -->
         <header id="top">
             <h1>Equipment Certification Rules</h1>
             <p class="lede">
@@ -447,6 +459,7 @@ if ($mapResult instanceof mysqli_result) {
             </p>
         </header>
         <main>
+            <!-- Flash messages rendered after updates. -->
             <?php foreach (['success', 'error'] as $type): ?>
                 <?php foreach ($messages[$type] as $message): ?>
                     <div class="notice <?php echo $type; ?>"><?php echo htmlspecialchars($message, ENT_QUOTES); ?></div>
@@ -454,8 +467,10 @@ if ($mapResult instanceof mysqli_result) {
             <?php endforeach; ?>
 
             <?php if (empty($equipmentList) || empty($certifications)): ?>
+                <!-- Empty state when no equipment/certification data exists. -->
                 <p class="lede">Add equipment and certifications to start configuring requirements.</p>
             <?php else: ?>
+                <!-- Main equipment requirements table. -->
                 <table>
                     <thead>
                         <tr>
@@ -467,8 +482,10 @@ if ($mapResult instanceof mysqli_result) {
                         </tr>
                     </thead>
                     <tbody>
+                        <!-- Each row renders one equipment item and its requirement editor. -->
                         <?php foreach ($equipmentList as $equipment): ?>
                             <?php
+                                // Derive the current certification labels and form tokens per equipment.
                                 $equipmentId = (int) $equipment['id'];
                                 $currentCerts = array_keys($equipmentCertMap[$equipmentId] ?? []);
                                 $currentNames = [];
@@ -483,6 +500,7 @@ if ($mapResult instanceof mysqli_result) {
                                 $formId = 'equip-form-' . $equipmentId;
                                 $token = generate_csrf_token('equip_certs_' . $equipmentId);
                             ?>
+                            <!-- Hidden form used by the checkbox inputs in the details panel. -->
                             <form id="<?php echo htmlspecialchars($formId, ENT_QUOTES); ?>" method="post">
                                 <input type="hidden" name="action" value="sync_requirements" />
                                 <input type="hidden" name="equipment_id" value="<?php echo $equipmentId; ?>" />
@@ -504,11 +522,13 @@ if ($mapResult instanceof mysqli_result) {
                                     </div>
                                 </td>
                                 <td data-label="Manage">
+                                    <!-- Expandable editor for assigning certifications. -->
                                     <details class="manager">
                                         <summary><?php echo htmlspecialchars($summary, ENT_QUOTES); ?></summary>
                                         <div class="checkbox-grid">
                                             <?php foreach ($certifications as $cert): ?>
                                                 <?php
+                                                    // Build each checkbox entry with a stable id and checked state.
                                                     $certId = (int) $cert['id'];
                                                     $checkboxId = 'cert-' . $equipmentId . '-' . $certId;
                                                     $isChecked = in_array($certId, $currentCerts, true);
@@ -532,6 +552,7 @@ if ($mapResult instanceof mysqli_result) {
                                             <?php endforeach; ?>
                                         </div>
                                         <div class="actions">
+                                            <!-- Primary save action and quick navigation. -->
                                             <button type="submit" class="save" form="<?php echo htmlspecialchars($formId, ENT_QUOTES); ?>">Save rules</button>
                                             <a class="secondary" href="#top">Back to top</a>
                                         </div>

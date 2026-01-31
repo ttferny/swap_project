@@ -2,14 +2,17 @@
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and capture profile context.
 $currentUser = require_login();
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'User'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
 $currentUserId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : null;
+// Message buckets for booking and cancellation flows.
 $bookingMessages = [
 	'success' => [],
 	'error' => [],
@@ -18,6 +21,7 @@ $cancelMessages = [
 	'success' => [],
 	'error' => [],
 ];
+// Allowed booking duration options.
 $durationOptions = [
 	'30' => '30 minutes',
 	'60' => '1 hour',
@@ -27,6 +31,7 @@ $durationOptions = [
 	'180' => '3 hours',
 ];
 
+// Default form values for the booking form.
 $formValues = [
 	'machine_id' => '',
 	'date' => '',
@@ -35,6 +40,7 @@ $formValues = [
 	'notes' => '',
 ];
 
+// Equipment and certification lookup data.
 $equipment = [];
 $equipmentById = [];
 $equipmentError = null;
@@ -44,6 +50,7 @@ $userCertsById = [];
 $certifiedEquipmentIds = [];
 $certifiedEquipment = [];
 
+// Load equipment inventory for selection and availability.
 $equipmentResult = mysqli_query(
 	$conn,
 	'SELECT equipment_id, name, current_status, location FROM equipment ORDER BY name ASC'
@@ -87,6 +94,7 @@ if ($equipmentResult === false) {
 	mysqli_free_result($equipmentResult);
 }
 
+// Load equipment certification requirements.
 $certsResult = mysqli_query(
 	$conn,
 	'SELECT equipment_id, cert_id FROM equipment_required_certs'
@@ -104,6 +112,7 @@ if ($certsResult === false) {
 	mysqli_free_result($certsResult);
 }
 
+// Load current user certifications to filter eligible equipment.
 if ($currentUserId !== null) {
 	$userCertStmt = mysqli_prepare(
 		$conn,
@@ -132,6 +141,7 @@ if ($currentUserId !== null) {
 	}
 }
 
+// Build the list of equipment the user is certified to book.
 if ($certEligibilityError === null && !empty($equipment)) {
 	foreach ($equipment as $machine) {
 		$equipmentId = (int) ($machine['id'] ?? 0);
@@ -161,6 +171,7 @@ if ($certEligibilityError === null && !empty($equipment)) {
 	}
 }
 
+// Truncate audit log fields to safe lengths.
 function truncateAuditText(?string $value, int $limit): string
 {
 	$value = (string) $value;
@@ -175,6 +186,7 @@ function truncateAuditText(?string $value, int $limit): string
 	return $value;
 }
 
+// Write audit log entries for booking actions.
 function logAuditEntry(mysqli $conn, ?int $actorId, string $action, string $entityType, ?int $entityId, array $details = []): void
 {
 	static $cachedIp = null;
@@ -207,6 +219,7 @@ function logAuditEntry(mysqli $conn, ?int $actorId, string $action, string $enti
 	}
 }
 
+// Handle booking submissions and cancellation requests.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	$formType = $_POST['form_type'] ?? 'submit_booking';
 	if ($formType === 'cancel_booking') {
@@ -457,9 +470,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	}
 }
 
+// CSRF tokens for booking and cancel actions.
 $bookingCsrfToken = generate_csrf_token('book_machine_submit');
 $cancelCsrfToken = generate_csrf_token('book_machine_cancel');
 
+// Load current user's bookings and availability data.
 $userBookings = [];
 $userBookingsError = null;
 $availabilityCalendar = [];
@@ -507,6 +522,7 @@ foreach ($userBookings as $booking) {
 	}
 }
 
+// Ensure flagged bookings are logged to the audit trail.
 if (!empty($flaggedBookingIds)) {
 	$checkStmt = mysqli_prepare(
 		$conn,
@@ -538,6 +554,7 @@ if (!empty($flaggedBookingIds)) {
 	}
 }
 
+// Availability calendar for upcoming bookings.
 $calendarSql = "SELECT b.start_time, b.end_time, e.name AS equipment_name
 	FROM bookings b
 	INNER JOIN equipment e ON e.equipment_id = b.equipment_id
@@ -567,6 +584,7 @@ if ($calendarResult === false) {
 	mysqli_free_result($calendarResult);
 }
 
+// Active maintenance list for booking awareness.
 $maintenanceSql = "SELECT DISTINCT e.name AS equipment_name
 	FROM maintenance_tasks mt
 	INNER JOIN equipment e ON e.equipment_id = mt.equipment_id
@@ -586,6 +604,7 @@ if ($maintenanceResult === false) {
 	mysqli_free_result($maintenanceResult);
 }
 
+// Promote a matching waitlist entry when a booking is cancelled.
 function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = null): void
 {
 	$bookingStmt = mysqli_prepare(
@@ -728,6 +747,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<!-- Base styles for the booking portal. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -1076,7 +1096,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 				padding: 0.65rem 0.85rem;
 				border-radius: 0.6rem;
 				border: 1px solid #d7def0;
-				background-color: #fdfdff;
+				background-color: #fdfdff; width: 100%;
 			}
 
 			.card form select {
@@ -1131,7 +1151,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 			}
 
 			button.primary {
-				padding: 0.75rem 1rem;
+				padding: 0.75rem 1rem; width: 100%;
 				border-radius: 0.75rem;
 				border: none;
 				background: var(--accent);
@@ -1170,6 +1190,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 		</style>
 	</head>
 	<body>
+		<!-- Header with navigation and search. -->
 		<header>
 			<div class="banner">
 				<h1>Welcome to TP AMC's Management System</h1>
@@ -1225,6 +1246,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 			</div>
 		</header>
 		<main>
+			<!-- Intro text for the booking portal. -->
 			<section class="hero">
 				<h2>Equipment Booking</h2>
 				<p>
@@ -1233,6 +1255,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 					requirements.
 				</p>
 			</section>
+			<!-- Equipment load alerts and empty state. -->
 			<?php if ($equipmentError): ?>
 				<div class="alert" role="alert">
 					<?php echo htmlspecialchars($equipmentError, ENT_QUOTES); ?>
@@ -1242,7 +1265,9 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 					No equipment records found yet. Add machines to the database to enable bookings.
 				</div>
 			<?php endif; ?>
+			<!-- Booking form, user bookings, and availability panels. -->
 			<section class="booking-panel">
+				<!-- Booking submission form. -->
 				<article class="card">
 					<h2>Schedule a Machine</h2>
 					<p>Pick the equipment, date, and duration you need.</p>
@@ -1320,6 +1345,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 						<button type="submit" class="primary">Submit Booking</button>
 					</form>
 				</article>
+				<!-- User booking history and cancellation controls. -->
 				<article class="card">
 					<h2>Your Bookings</h2>
 					<p>Manage your upcoming reservations and cancel slots you no longer need.</p>
@@ -1406,6 +1432,7 @@ function promoteMatchingWaitlist(mysqli $conn, int $bookingId, ?int $actorId = n
 						</div>
 					<?php endif; ?>
 				</article>
+				<!-- Availability calendar and maintenance list. -->
 				<article class="card">
 					<h2>Availability Calendar</h2>
 					<p>Unavailable machines</p>

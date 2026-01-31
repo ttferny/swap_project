@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current admin user context and identity values.
 $currentUser = enforce_capability($conn, 'admin.core');
 $userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
 if ($userFullName === '') {
@@ -13,6 +14,7 @@ $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
 $logoutToken = generate_csrf_token('logout_form');
 $currentUserId = (int) ($currentUser['user_id'] ?? 0);
 
+// Flash message handling for create/update/delete flows.
 $messages = ['success' => [], 'error' => []];
 $userFlash = flash_retrieve('admin_users');
 if (is_array($userFlash) && isset($userFlash['messages']) && is_array($userFlash['messages'])) {
@@ -23,6 +25,7 @@ if (is_array($userFlash) && isset($userFlash['messages']) && is_array($userFlash
 	}
 }
 
+// Build equipment lookup for access summaries.
 $equipmentLookup = [];
 $equipmentResult = mysqli_query($conn, 'SELECT equipment_id, name, category, risk_level FROM equipment ORDER BY name ASC');
 if ($equipmentResult instanceof mysqli_result) {
@@ -46,6 +49,7 @@ if ($equipmentResult instanceof mysqli_result) {
 	mysqli_free_result($equipmentResult);
 }
 
+// Load role options for user creation and editing.
 $roles = [];
 $roleLookup = [];
 $rolesResult = mysqli_query($conn, 'SELECT role_id, role_name FROM roles ORDER BY role_name ASC');
@@ -62,6 +66,7 @@ if ($rolesResult instanceof mysqli_result) {
 	mysqli_free_result($rolesResult);
 }
 
+// Normalize role labels for comparisons.
 $normalizeRoleLabel = static function (?string $value): string {
 	return strtolower(trim((string) $value));
 };
@@ -74,6 +79,7 @@ $isAdminRoleId = static function (int $roleId) use ($getRoleKeyById): bool {
 	return $getRoleKeyById($roleId) === 'admin';
 };
 
+// Handle create, update, and delete user actions.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	$action = trim((string) ($_POST['action'] ?? ''));
 	if ($action === 'create_user') {
@@ -319,6 +325,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	redirect_to_current_uri('admin-users.php');
 }
 
+// Load user list for the admin table.
 $users = [];
 $usersResult = mysqli_query(
 	$conn,
@@ -334,6 +341,7 @@ if ($usersResult instanceof mysqli_result) {
 	mysqli_free_result($usersResult);
 }
 
+// CSRF token for the create-user form.
 $createToken = generate_csrf_token('admin_user_create');
 ?>
 <!DOCTYPE html>
@@ -348,6 +356,7 @@ $createToken = generate_csrf_token('admin_user_create');
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<!-- Base styles for the user management page. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -577,6 +586,7 @@ $createToken = generate_csrf_token('admin_user_create');
 		</style>
 	</head>
 	<body>
+		<!-- Header showing the signed-in admin identity. -->
 		<header>
 			<h1 style="margin: 0; font-size: clamp(1.5rem, 3vw, 2.4rem);">User Accounts Control</h1>
 			<p style="margin: 0.35rem 0 0; color: var(--muted);">
@@ -584,18 +594,22 @@ $createToken = generate_csrf_token('admin_user_create');
 			</p>
 		</header>
 		<main>
+			<!-- Flash messages for recent actions. -->
 			<?php foreach (['success', 'error'] as $type): ?>
 				<?php foreach ($messages[$type] as $message): ?>
 					<div class="notice <?php echo $type; ?>"><?php echo htmlspecialchars($message, ENT_QUOTES); ?></div>
 				<?php endforeach; ?>
 			<?php endforeach; ?>
 
+			<!-- Create user form and quick navigation panel. -->
 			<div class="grid-two">
 				<div class="card">
+					<!-- User creation form for adding new accounts. -->
 					<h2>Create New User</h2>
 					<form method="post">
 						<input type="hidden" name="action" value="create_user" />
 						<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($createToken, ENT_QUOTES); ?>" />
+						<!-- Core identity fields for a new account. -->
 						<label>
 							Admin Number
 							<input type="text" name="tp_admin_no" required />
@@ -615,6 +629,7 @@ $createToken = generate_csrf_token('admin_user_create');
 								<?php endforeach; ?>
 							</select>
 						</label>
+						<!-- Temporary password for first login. -->
 						<label>
 							Temporary Password
 							<input type="password" name="password" required />
@@ -624,6 +639,7 @@ $createToken = generate_csrf_token('admin_user_create');
 					</form>
 				</div>
 				<div class="card">
+					<!-- Quick links for cross-role testing and navigation. -->
 					<h2>Platform Shortcuts</h2>
 					<p>Need to impersonate a role or verify user journeys? Use the quick links below to jump directly into each workspace.</p>
 					<ul style="margin: 1rem 0 0; padding-left: 1.2rem; color: var(--muted); line-height: 1.6;">
@@ -635,6 +651,7 @@ $createToken = generate_csrf_token('admin_user_create');
 				</div>
 			</div>
 
+			<!-- User table listing and inline edit/delete controls. -->
 			<?php if (empty($users)): ?>
 				<p style="color: var(--muted);">No users found in the system.</p>
 			<?php else: ?>
@@ -652,6 +669,7 @@ $createToken = generate_csrf_token('admin_user_create');
 					<tbody>
 						<?php foreach ($users as $user): ?>
 							<?php
+								// Prepare per-user tokens and access summaries.
 								$userId = (int) ($user['user_id'] ?? 0);
 								$updateToken = generate_csrf_token('admin_user_update_' . $userId);
 								$deleteToken = generate_csrf_token('admin_user_delete_' . $userId);
@@ -673,6 +691,7 @@ $createToken = generate_csrf_token('admin_user_create');
 								$isSelfRow = $userId === $currentUserId;
 								$lockAdminRow = $rowIsAdmin && !$isSelfRow;
 							?>
+							<!-- Hidden forms used for per-row update and delete actions. -->
 							<form id="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>" method="post">
 								<input type="hidden" name="action" value="update_user" />
 								<input type="hidden" name="user_id" value="<?php echo $userId; ?>" />

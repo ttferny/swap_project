@@ -4,19 +4,23 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce analytics access.
 $currentUser = enforce_capability($conn, 'analytics.dashboard');
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Administrator';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
 
+// Data containers for weekly booking utilisation chart.
 $equipmentWeekly = [];
 $equipmentColors = [];
 $weekLabels = [];
 $bookingChartError = null;
 
+// Severity and category labels used across incident analytics.
 $severityLevels = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'critical' => 'Critical'];
 $severityColors = [
 	'low' => '#38bdf8',
@@ -42,6 +46,7 @@ $categoryColors = [
 	'other' => '#6b7280',
 ];
 
+// Containers for downtime and breakdown summaries.
 $downtimeThisMonth = [];
 $downtimeError = null;
 $breakdownCounts = [];
@@ -49,6 +54,7 @@ $breakdownError = null;
 $incidentTopEquipment = [];
 $incidentTopCategories = [];
 $incidentAnalyticsError = null;
+// Monthly safety summary data for the report and charts.
 $monthlySafetySummary = [
 	'total' => 0,
 	'bySeverity' => [],
@@ -59,6 +65,7 @@ $monthlySafetyReportText = '';
 $monthlySafetySummary['bySeverity'] = array_fill_keys(array_keys($severityLevels), 0);
 $monthlySafetySummary['byCategory'] = array_fill_keys(array_keys($categoryLabels), 0);
 
+// Date helpers for the current reporting window.
 $today = new DateTime('today');
 $currentYear = (int) $today->format('Y');
 $currentMonth = (int) $today->format('m');
@@ -68,6 +75,7 @@ for ($i = 1; $i <= $weekCount; $i++) {
 	$weekLabels[] = 'Week ' . $i;
 }
 
+// Booking utilisation query for the current month.
 $bookingSql = "SELECT e.equipment_id, e.name AS equipment_name,
 	FLOOR((DAYOFMONTH(b.start_time) - 1) / 7) + 1 AS week_of_month,
 	COUNT(b.booking_id) AS total
@@ -111,6 +119,7 @@ if (!$bookingStmt) {
 	mysqli_stmt_close($bookingStmt);
 }
 
+// Fall back to listing equipment with zeroed counts if no bookings exist.
 if (empty($equipmentWeekly) && $bookingChartError === null) {
 	$equipmentListSql = 'SELECT equipment_id, name FROM equipment ORDER BY name';
 	$equipmentResult = mysqli_query($conn, $equipmentListSql);
@@ -161,9 +170,11 @@ foreach ($equipmentWeekly as $equipmentId => $equipmentData) {
 	$colorIndex++;
 }
 
+// Date boundaries for monthly downtime and safety summaries.
 $monthStart = (clone $today)->modify('first day of this month')->format('Y-m-d 00:00:00');
 $monthEnd = (clone $today)->modify('last day of this month')->format('Y-m-d 23:59:59');
 
+// Downtime aggregation for this month.
 $downtimeSql = "SELECT mr.equipment_id, e.name AS equipment_name, SUM(TIMESTAMPDIFF(MINUTE, COALESCE(mr.downtime_start, mr.created_at), COALESCE(mr.downtime_end, NOW()))) AS total_minutes
 	FROM maintenance_records mr
 	INNER JOIN equipment e ON e.equipment_id = mr.equipment_id
@@ -195,6 +206,7 @@ if ($downtimeStmt === false) {
 	mysqli_stmt_close($downtimeStmt);
 }
 
+// Breakdown frequency over the past six months.
 $breakdownSql = "SELECT mr.equipment_id, e.name AS equipment_name, COUNT(*) AS total_breakdowns
 	FROM maintenance_records mr
 	INNER JOIN equipment e ON e.equipment_id = mr.equipment_id
@@ -216,6 +228,7 @@ if ($breakdownResult === false) {
 	mysqli_free_result($breakdownResult);
 }
 
+// Equipment name list for location filtering.
 $equipmentNames = [];
 $equipmentNameLookup = [];
 $equipmentNameResult = mysqli_query($conn, 'SELECT name FROM equipment ORDER BY name');
@@ -231,6 +244,7 @@ if ($equipmentNameResult !== false) {
 	mysqli_free_result($equipmentNameResult);
 }
 
+// Optional location filter from query string.
 $locationFilter = trim((string) ($_GET['location_scope'] ?? 'all'));
 if ($locationFilter === '') {
 	$locationFilter = 'all';
@@ -242,6 +256,7 @@ if (!in_array($locationFilterKey, $validLocationKeys, true)) {
 	$locationFilter = 'all';
 }
 
+// Safety trend containers for the rolling window chart.
 $trendDays = [];
 $safetyTrendError = null;
 $safetyMonthsToShow = 6;
@@ -270,6 +285,7 @@ for ($i = 0; $i < $safetyMonthsToShow; $i++) {
 }
 $safetyWindowStartStr = $safetyWindowStart->format('Y-m-d 00:00:00');
 
+// Safety trend query for the rolling six-month window.
 $safetySql = "SELECT severity, DATE_FORMAT(created_at, '%Y-%m') AS month_key, COUNT(*) AS total
 	FROM incidents
 	WHERE created_at >= ?
@@ -351,6 +367,7 @@ if (!empty($safetyBucketValues)) {
 
 $incidentWindowStart = (clone $today)->modify('-6 months')->format('Y-m-d 00:00:00');
 
+// Incident hotspot queries for equipment and categories.
 $incidentEquipmentSql = "SELECT COALESCE(e.name, 'General area / none specified') AS equipment_name, COUNT(*) AS total
 	FROM incidents i
 	LEFT JOIN equipment e ON e.equipment_id = i.equipment_id
@@ -403,6 +420,7 @@ if ($incidentCategoryStmt === false) {
 	mysqli_stmt_close($incidentCategoryStmt);
 }
 
+// Monthly safety report aggregation queries.
 $monthlySeveritySql = 'SELECT severity, COUNT(*) AS total FROM incidents WHERE created_at BETWEEN ? AND ? GROUP BY severity';
 $monthlyCategorySql = 'SELECT category, COUNT(*) AS total FROM incidents WHERE created_at BETWEEN ? AND ? GROUP BY category';
 $monthlyEquipmentSql = "SELECT COALESCE(e.name, 'General area / none specified') AS equipment_name, COUNT(*) AS total
@@ -473,6 +491,7 @@ if ($monthlyEquipmentStmt) {
 	mysqli_stmt_close($monthlyEquipmentStmt);
 }
 
+// Build the monthly safety report text.
 $reportLines = [];
 $reportLines[] = 'Monthly Safety Report - ' . $today->format('F Y');
 $reportLines[] = 'Total incidents: ' . $monthlySafetySummary['total'];
@@ -512,6 +531,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 		/>
 		<link rel="stylesheet" href="assets/css/live-maintenance.css" />
 		<script src="assets/js/live-maintenance.js" defer></script>
+		<!-- Base styles for analytics dashboard layout. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -1157,6 +1177,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 		</style>
 	</head>
 	<body>
+		<!-- Header with search, shortcuts, and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1>Analytics Dashboard</h1>
@@ -1224,6 +1245,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 
 		</header>
 		<main>
+			<!-- Intro section with primary actions. -->
 			<section class="intro" aria-labelledby="analytics-intro-title">
 				<h2 id="analytics-intro-title">Equipment Utilisation & Safety Trends</h2>
 				<p>Explore equipment utilisation patterns and safety trends across the AMC.</p>
@@ -1233,7 +1255,9 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 					</a>
 				</div>
 			</section>
+			<!-- Main analytics cards and charts. -->
 			<section class="grid" aria-label="Analytics highlights">
+				<!-- Booking utilisation chart. -->
 				<article class="card">
 					<h3>Equipment Utilisation</h3>
 					<p>Completed bookings per machine by week this month.</p>
@@ -1282,6 +1306,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 						<p class="chart-note">Counts reflect approved bookings with start times before today.</p>
 					<?php endif; ?>
 				</article>
+				<!-- Safety trend chart and breakdowns. -->
 				<article class="card">
 					<h3>Safety Trends</h3>
 					<p>Incident mix captured over the past six months.</p>
@@ -1343,6 +1368,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 						<p class="chart-note">Window: <?php echo htmlspecialchars($safetyWindowLabel, ENT_QUOTES); ?></p>
 					<?php endif; ?>
 				</article>
+				<!-- Downtime summary list. -->
 				<article class="card">
 					<h3>Downtime This Month</h3>
 					<p>Minutes of downtime per machine (includes ongoing events).</p>
@@ -1361,6 +1387,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 						</ul>
 					<?php endif; ?>
 				</article>
+				<!-- Breakdown frequency list. -->
 				<article class="card">
 					<h3>Breakdown Frequency (6 mo)</h3>
 					<p>Most frequent breakdowns based on recorded downtime events.</p>
@@ -1379,6 +1406,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 						</ul>
 					<?php endif; ?>
 				</article>
+				<!-- Incident hotspot list by equipment. -->
 				<article class="card">
 					<h3>Incident Hotspots (6 mo)</h3>
 					<p>Machines or areas most frequently involved in incidents.</p>
@@ -1397,6 +1425,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 						</ul>
 					<?php endif; ?>
 				</article>
+				<!-- Incident category list. -->
 				<article class="card">
 					<h3>Incident Types (6 mo)</h3>
 					<p>Most common incident categories across the AMC.</p>
@@ -1415,6 +1444,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 						</ul>
 					<?php endif; ?>
 				</article>
+				<!-- Generated monthly safety report text block. -->
 				<article class="card">
 					<h3>Monthly Safety Report</h3>
 					<p>Auto-generated summary for <?php echo htmlspecialchars($today->format('F Y'), ENT_QUOTES); ?>.</p>

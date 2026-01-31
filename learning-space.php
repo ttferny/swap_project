@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce learning portal access.
 $currentUser = enforce_capability($conn, 'portal.learning');
 $dashboardHref = dashboard_home_path($currentUser);
 $historyFallback = $dashboardHref;
@@ -12,8 +13,10 @@ if ($userFullName === '') {
 	$userFullName = 'Student';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'User'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
 
+// Certification and material action feedback placeholders.
 $certActionMessage = null;
 $certActionError = null;
 $currentUserId = (int) ($currentUser['user_id'] ?? 0);
@@ -28,6 +31,7 @@ if ($currentUserId > 0) {
 
 $materialActionMessage = null;
 $materialActionError = null;
+// Labels for skill levels and material types.
 $skillLevelLabels = [
 	'general' => 'General Overview',
 	'novice' => 'Beginner / Orientation',
@@ -66,6 +70,7 @@ if (is_array($materialFlash)) {
 	}
 }
 
+// Ensure training material schema enhancements exist.
 if (!function_exists('ensure_training_material_schema')) {
 	function ensure_training_material_schema(mysqli $conn): void
 	{
@@ -94,6 +99,7 @@ if (!function_exists('ensure_training_material_schema')) {
 	}
 }
 
+// Ensure completion tracking table exists.
 if (!function_exists('ensure_material_completion_table')) {
 	function ensure_material_completion_table(mysqli $conn): void
 	{
@@ -119,6 +125,7 @@ if (!function_exists('ensure_material_completion_table')) {
 ensure_training_material_schema($conn);
 ensure_material_completion_table($conn);
 
+// Load per-user material completion state.
 $userMaterialCompletions = [];
 if ($currentUserId > 0) {
 	$completionStmt = mysqli_prepare(
@@ -146,6 +153,7 @@ if ($currentUserId > 0) {
 	}
 }
 
+// Filter inputs for material search.
 $materialSearch = trim((string) ($_GET['q'] ?? ''));
 $skillFilter = strtolower(trim((string) ($_GET['skill'] ?? 'all')));
 if ($skillFilter !== 'all' && !isset($skillLevelLabels[$skillFilter])) {
@@ -169,6 +177,7 @@ $totalAccessibleMaterials = 0;
 $completedAccessibleMaterials = 0;
 $visibleMaterialsCount = 0;
 
+// Handle certification request submissions.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cert_action'])) {
 	$certAction = trim((string) ($_POST['cert_action'] ?? ''));
 	$certId = (int) ($_POST['cert_id'] ?? 0);
@@ -281,6 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cert_action'])) {
 	redirect_to_current_uri();
 }
 
+// Handle material progress updates.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['material_action'])) {
 	$materialAction = trim((string) ($_POST['material_action'] ?? ''));
 	$materialId = (int) ($_POST['material_id'] ?? 0);
@@ -375,6 +385,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['material_action'])) {
 	redirect_to_current_uri();
 }
 
+// Load equipment list for material grouping.
 $equipment = [];
 $equipmentError = null;
 
@@ -407,6 +418,7 @@ if ($limitEquipmentScope && $equipmentError === null && empty($equipment)) {
 	$equipmentError = 'No equipment is currently unlocked by your certifications. Complete the required training or contact your administrator.';
 }
 
+// Load learning materials by equipment.
 $materialsByEquipment = [];
 $materialsError = null;
 
@@ -493,6 +505,7 @@ $materialProgressPercent = $totalAccessibleMaterials > 0
 	? (int) round(($completedAccessibleMaterials / $totalAccessibleMaterials) * 100)
 	: 0;
 
+// Load available certifications and user certification progress.
 $allCerts = [];
 $allCertsError = null;
 
@@ -519,6 +532,7 @@ if ($allCertsResult === false) {
 	mysqli_free_result($allCertsResult);
 }
 
+// Load user certification status details.
 $userCertsById = [];
 $userCertsError = null;
 
@@ -581,6 +595,7 @@ if ($userCertDetailsStmt === false) {
 	mysqli_stmt_close($userCertDetailsStmt);
 }
 
+// Load certification requirements per equipment.
 $certsByEquipment = [];
 $certsError = null;
 
@@ -630,6 +645,7 @@ if ($certsResult === false) {
 			rel="stylesheet"
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
+		<!-- Base styles for the learning space UI. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -1539,6 +1555,7 @@ if ($certsResult === false) {
 		</style>
 	</head>
 	<body>
+		<!-- Header with search, navigation, and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1>Learning Space</h1>
@@ -1609,6 +1626,7 @@ if ($certsResult === false) {
 			</div>
 		</header>
 		<main>
+			<!-- Intro copy and progress overview. -->
 			<section class="intro">
 				<h2>Welcome, <?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
@@ -1616,6 +1634,7 @@ if ($certsResult === false) {
 					machine to view guides, SOPs, and videos aligned with your training path.
 				</p>
 			</section>
+			<!-- Progress summary and filter controls. -->
 			<section class="filter-panel" aria-label="Learning progress and filters">
 				<article class="progress-card">
 					<?php if ($totalAccessibleMaterials > 0): ?>
@@ -1684,6 +1703,7 @@ if ($certsResult === false) {
 			<?php elseif ($materialActionError !== null): ?>
 				<p class="notice notice-error" role="alert"><?php echo htmlspecialchars($materialActionError, ENT_QUOTES); ?></p>
 			<?php endif; ?>
+			<!-- Certification request hub. -->
 			<section class="cert-hub" aria-labelledby="cert-hub-title">
 				<div class="cert-hub-header">
 					<h2 id="cert-hub-title">Certification Hub</h2>
@@ -1815,6 +1835,7 @@ if ($certsResult === false) {
 					</div>
 				<?php endif; ?>
 			</section>
+			<!-- Equipment-specific learning materials. -->
 			<section class="cert-hub" aria-labelledby="learning-materials-title">
 				<div class="cert-hub-header">
 					<h2 id="learning-materials-title">Machine Learning Materials</h2>

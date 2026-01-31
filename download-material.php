@@ -4,15 +4,18 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce download capability.
 $currentUser = enforce_capability($conn, 'portal.downloads');
 $currentUserId = (int) ($currentUser['user_id'] ?? 0);
 
+// Validate incoming material id parameter.
 $materialId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$materialId) {
 	http_response_code(400);
 	exit('Invalid request.');
 }
 
+// Load material metadata for download.
 $sql = 'SELECT title, material_type, file_url, file_path, file_hash FROM training_materials WHERE material_id = ? LIMIT 1';
 $stmt = mysqli_prepare($conn, $sql);
 if ($stmt === false) {
@@ -46,6 +49,7 @@ if ($sanitizedTitle === '' || $sanitizedTitle === null) {
 }
 $downloadName = $sanitizedTitle;
 
+// Determine candidate file source (local path or remote URL).
 $fileUrl = trim((string) ($material['file_url'] ?? ''));
 $filePath = trim((string) ($material['file_path'] ?? ''));
 $storedHash = trim((string) ($material['file_hash'] ?? ''));
@@ -57,6 +61,7 @@ if ($candidatePath === '') {
 	exit('File not available.');
 }
 
+// Gather equipment associations to enforce access rules.
 $associatedEquipmentIds = [];
 $equipmentStmt = mysqli_prepare(
 	$conn,
@@ -78,11 +83,13 @@ if ($equipmentStmt) {
 	mysqli_stmt_close($equipmentStmt);
 }
 
+// Enforce per-equipment access rules before download.
 if (!user_can_access_any_equipment($conn, $currentUserId, $associatedEquipmentIds)) {
 	http_response_code(403);
 	exit('You do not have permission to download this material.');
 }
 
+// Audit helper for download events.
 $logMaterialDownload = static function (string $deliveryType) use (&$downloadName, $conn, $currentUserId, $associatedEquipmentIds, $materialId, $title): void {
 	$details = [
 		'material_id' => $materialId,
@@ -113,6 +120,7 @@ $logMaterialDownload = static function (string $deliveryType) use (&$downloadNam
 	}
 };
 
+// Redirect to remote URLs instead of streaming locally.
 if (filter_var($candidatePath, FILTER_VALIDATE_URL)) {
 	$pathName = (string) parse_url($candidatePath, PHP_URL_PATH);
 	$remoteName = $pathName !== '' ? basename($pathName) : '';
@@ -125,6 +133,7 @@ if (filter_var($candidatePath, FILTER_VALIDATE_URL)) {
 }
 
 
+// Resolve local file path relative to the project root.
 $resolvedPath = $candidatePath;
 if (!preg_match('#^(?:[A-Za-z]:[\\/]|/)#', $candidatePath)) {
 	$resolvedPath = __DIR__ . DIRECTORY_SEPARATOR . ltrim($candidatePath, '/\\');
@@ -135,6 +144,7 @@ if (!preg_match('#^(?:[A-Za-z]:[\\/]|/)#', $candidatePath)) {
 	}
 }
 
+// Verify integrity when a stored hash is available.
 if ($storedHash !== '') {
 	$computedHash = @hash_file('sha256', $realPath) ?: null;
 	if ($computedHash === null || !hash_equals($storedHash, $computedHash)) {
@@ -155,6 +165,7 @@ if ($storedHash !== '') {
 	}
 }
 
+// Resolve filesystem path and enforce directory boundaries.
 $realPath = realpath($resolvedPath);
 if ($realPath === false || !is_file($realPath)) {
 	http_response_code(404);
@@ -182,6 +193,7 @@ if ($size === false) {
 	$size = null;
 }
 
+// Detect MIME type for safe downloads.
 $mimeType = 'application/octet-stream';
 if (function_exists('finfo_open')) {
 	$finfo = finfo_open(FILEINFO_MIME_TYPE);
@@ -194,6 +206,7 @@ if (function_exists('finfo_open')) {
 	}
 }
 
+// Log the local file download event.
 $logMaterialDownload('local_file');
 
 header('Content-Type: ' . $mimeType);

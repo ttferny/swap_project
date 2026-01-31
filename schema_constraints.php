@@ -9,7 +9,9 @@ if (PHP_SAPI !== 'cli') {
     }
 }
 
+// Helper functions to ensure database constraints and indexes exist.
 if (!function_exists('ensure_core_database_constraints')) {
+    // Apply core check constraints, foreign keys, and unique indexes.
     function ensure_core_database_constraints(mysqli $conn): void
     {
         static $ensured = false;
@@ -43,6 +45,7 @@ if (!function_exists('ensure_core_database_constraints')) {
         ensure_unique_index($conn, $databaseName, 'equipment', 'uq_equipment_name', ['name']);
     }
 
+    // Resolve the active database schema name.
     function database_constraints_current_schema(mysqli $conn): ?string
     {
         $result = mysqli_query($conn, 'SELECT DATABASE() AS db_name');
@@ -55,6 +58,7 @@ if (!function_exists('ensure_core_database_constraints')) {
         return $name === '' ? null : $name;
     }
 
+    // Create check constraints if missing.
     function ensure_check_constraint(mysqli $conn, string $schema, string $table, string $constraintName, string $definition): void
     {
         if (!is_valid_identifier($table) || !is_valid_identifier($constraintName)) {
@@ -67,6 +71,7 @@ if (!function_exists('ensure_core_database_constraints')) {
         @mysqli_query($conn, $sql);
     }
 
+    // Create foreign key constraints if missing.
     function ensure_foreign_key_constraint(mysqli $conn, string $schema, string $table, string $constraintName, string $definition): void
     {
         if (!is_valid_identifier($table) || !is_valid_identifier($constraintName)) {
@@ -79,6 +84,7 @@ if (!function_exists('ensure_core_database_constraints')) {
         @mysqli_query($conn, $sql);
     }
 
+    // Create unique indexes if missing.
     function ensure_unique_index(mysqli $conn, string $schema, string $table, string $indexName, array $columns): void
     {
         if (!is_valid_identifier($table) || !is_valid_identifier($indexName) || empty($columns)) {
@@ -97,6 +103,7 @@ if (!function_exists('ensure_core_database_constraints')) {
         @mysqli_query($conn, $sql);
     }
 
+    // Check whether a named constraint already exists.
     function constraint_exists(mysqli $conn, string $schema, string $table, string $constraintName): bool
     {
         $sql = 'SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? LIMIT 1';
@@ -112,6 +119,7 @@ if (!function_exists('ensure_core_database_constraints')) {
         return $exists;
     }
 
+    // Check whether a named index already exists.
     function unique_index_exists(mysqli $conn, string $schema, string $table, string $indexName): bool
     {
         $sql = 'SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1';
@@ -127,6 +135,7 @@ if (!function_exists('ensure_core_database_constraints')) {
         return $exists;
     }
 
+    // Validate identifiers to avoid SQL injection in DDL.
     function is_valid_identifier(string $value): bool
     {
         return preg_match('/^[A-Za-z0-9_]+$/', $value) === 1;

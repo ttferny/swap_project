@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce maintenance approval access.
 $currentUser = enforce_capability($conn, 'approvals.maintenance');
 enforce_role_access(['admin', 'manager', 'technician'], $currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
@@ -12,8 +13,10 @@ if ($userFullName === '') {
 }
 $historyFallback = dashboard_home_path($currentUser);
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
+// CSRF token for logout action.
 $logoutToken = generate_csrf_token('logout_form');
 
+// Flash message placeholders for approval decisions.
 $decisionError = null;
 $decisionNotice = null;
 $decisionFlash = flash_retrieve('maintenance_approvals');
@@ -26,6 +29,7 @@ if (is_array($decisionFlash)) {
     }
 }
 
+// Format schedule timestamps for display.
 function format_datetime(?string $value): string
 {
     if ($value === null || $value === '') {
@@ -39,6 +43,7 @@ function format_datetime(?string $value): string
 }
 
 
+// Handle approve/reject decisions for maintenance tasks.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_decision'])) {
     $taskId = (int) ($_POST['task_id'] ?? 0);
     $decision = strtolower(trim((string) ($_POST['decision'] ?? '')));
@@ -127,6 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_decision'
     redirect_to_current_uri('maintenance-approvals.php');
 }
 
+// Summary stats for manager approvals.
 $managerStats = [
     'submitted' => 0,
     'approved' => 0,
@@ -143,6 +149,7 @@ if ($statsResult !== false) {
     mysqli_free_result($statsResult);
 }
 
+// Pending maintenance tasks awaiting review.
 $pendingTasks = [];
 $pendingQueueError = null;
 $pendingSql = "SELECT
@@ -189,6 +196,7 @@ if ($pendingResult === false) {
     mysqli_free_result($pendingResult);
 }
 
+// Recent approval/rejection history.
 $recentDecisions = [];
 $historyError = null;
 $historySql = "SELECT
@@ -229,6 +237,7 @@ if ($historyResult === false) {
     mysqli_free_result($historyResult);
 }
 
+// Count unscheduled tasks for intro messaging.
 $pendingUnscheduled = 0;
 foreach ($pendingTasks as $task) {
     if ($task['scheduled_for'] === null || $task['scheduled_for'] === '') {
@@ -249,6 +258,7 @@ foreach ($pendingTasks as $task) {
             rel="stylesheet"
         />
         <script src="assets/js/history-guard.js" defer></script>
+        <!-- Base styles for maintenance approval screen. -->
         <style>
             :root {
                 --bg: #f4fdf7;
@@ -763,6 +773,7 @@ foreach ($pendingTasks as $task) {
         </style>
     </head>
     <body>
+        <!-- Header with search and profile menu. -->
         <header>
             <div class="banner">
                 <h1>Maintenance Schedule Approvals</h1>
@@ -829,6 +840,7 @@ foreach ($pendingTasks as $task) {
             </div>
         </header>
         <main>
+            <!-- Intro and summary stats. -->
             <section class="intro" aria-labelledby="approvals-intro">
                 <h2 id="approvals-intro">Keep service work under control</h2>
                 <p>
@@ -836,6 +848,7 @@ foreach ($pendingTasks as $task) {
                     release approved work to technicians. Unscheduled items waiting on calendar slots: <?php echo (int) $pendingUnscheduled; ?>.
                 </p>
             </section>
+            <!-- Summary cards for approval counts. -->
             <section class="stats-grid" aria-label="Approval summary">
                 <article class="stat-card">
                     <span>Awaiting review</span>
@@ -855,6 +868,7 @@ foreach ($pendingTasks as $task) {
             <?php elseif ($decisionNotice !== null): ?>
                 <p class="alert alert-success" role="status"><?php echo htmlspecialchars($decisionNotice, ENT_QUOTES); ?></p>
             <?php endif; ?>
+            <!-- Pending tasks list and recent decisions. -->
             <div class="layout">
                 <section class="card">
                     <h3>Pending schedules</h3>

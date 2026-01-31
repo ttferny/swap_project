@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current admin user and dashboard destination.
 $currentUser = enforce_capability($conn, 'admin.core');
 $dashboardHref = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
@@ -12,6 +13,7 @@ if ($userFullName === '') {
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
 
+// Format datetime values consistently for tables and summaries.
 function format_datetime(?string $value): string
 {
     if ($value === null || $value === '') {
@@ -24,6 +26,7 @@ function format_datetime(?string $value): string
     return $dt->format('d M Y, H:i');
 }
 
+// Provide a short, human-readable summary for audit detail payloads.
 function summarize_audit_details(?string $jsonPayload): string
 {
     if ($jsonPayload === null || trim($jsonPayload) === '') {
@@ -57,6 +60,7 @@ function summarize_audit_details(?string $jsonPayload): string
     return strlen($summary) > 140 ? substr($summary, 0, 137) . '...' : $summary;
 }
 
+// Aggregate booking counts by status for the KPI cards.
 $bookingSummary = [
     'total' => 0,
     'approved' => 0,
@@ -77,6 +81,7 @@ if ($bookingSummaryResult instanceof mysqli_result) {
     mysqli_free_result($bookingSummaryResult);
 }
 
+// Aggregate incident counts by severity for safety reporting.
 $incidentSummary = [
     'total' => 0,
     'critical' => 0,
@@ -97,6 +102,7 @@ if ($incidentResult instanceof mysqli_result) {
     mysqli_free_result($incidentResult);
 }
 
+// Aggregate maintenance counts by status for reliability insights.
 $maintenanceSummary = [
     'total' => 0,
     'open' => 0,
@@ -116,6 +122,7 @@ if ($maintenanceResult instanceof mysqli_result) {
     mysqli_free_result($maintenanceResult);
 }
 
+// Recent booking activity table source.
 $recentBookings = [];
 $recentBookingSql = 'SELECT b.booking_id, b.status, b.start_time, b.end_time, b.created_at,
         e.name AS equipment_name,
@@ -132,6 +139,7 @@ if ($result = mysqli_query($conn, $recentBookingSql)) {
     mysqli_free_result($result);
 }
 
+// Recent incident activity table source.
 $recentIncidents = [];
 $incidentSql = 'SELECT inc.incident_id, inc.severity, inc.category, inc.created_at,
         inc.location, e.name AS equipment_name, u.full_name AS reporter_name
@@ -148,6 +156,7 @@ if ($result = mysqli_query($conn, $incidentSql)) {
     mysqli_free_result($result);
 }
 
+// Recent maintenance activity table source.
 $recentMaintenance = [];
 $maintenanceSql = 'SELECT mt.task_id, mt.title, mt.status, mt.priority, mt.updated_at,
         e.name AS equipment_name
@@ -162,6 +171,7 @@ if ($result = mysqli_query($conn, $maintenanceSql)) {
     mysqli_free_result($result);
 }
 
+// Audit trail feed for compliance visibility.
 $auditTrail = [];
 $auditTrailSql = "SELECT al.audit_id, al.actor_user_id, al.action, al.entity_type, al.entity_id, al.ip_address, al.user_agent, al.details, al.created_at
     FROM audit_logs al
@@ -187,6 +197,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
             href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
             rel="stylesheet"
         />
+        <!-- Base styles for the admin insights layout. -->
         <style>
             :root {
                 --bg: #f8fbff;
@@ -417,6 +428,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
         </style>
     </head>
     <body>
+        <!-- Header with signed-in admin context. -->
         <header>
             <h1>Administrator Insights Hub</h1>
             <p class="lede">
@@ -425,6 +437,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
             </p>
         </header>
         <main>
+            <!-- Summary KPI cards for quick status checks. -->
             <section class="summary-grid">
                 <article class="summary-card">
                     <h3>Total Bookings</h3>
@@ -444,6 +457,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
                 </article>
             </section>
 
+            <!-- Recent bookings table. -->
             <section class="panel">
                 <h2>Booking History</h2>
                 <p class="lede">
@@ -484,6 +498,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
                 <?php endif; ?>
             </section>
 
+            <!-- Incidents and safety reports table. -->
             <section class="panel">
                 <h2>Incidents & Safety Reports</h2>
                 <p class="lede">Track the latest submissions with severity markers and affected equipment.</p>
@@ -522,6 +537,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
                 <?php endif; ?>
             </section>
 
+            <!-- Maintenance updates table. -->
             <section class="panel">
                 <h2>Maintenance & Reliability Timeline</h2>
                 <p class="lede">Review recent task updates to understand equipment availability and outstanding work.</p>
@@ -555,6 +571,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
                 <?php endif; ?>
             </section>
 
+            <!-- Audit log table for compliance activity. -->
             <section class="panel">
                 <h2>Recent Audit Activity</h2>
                 <p class="lede">Review the latest security and workflow events captured in the audit trail.</p>
@@ -598,6 +615,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
                 <?php endif; ?>
             </section>
 
+            <!-- Quick links to other admin dashboards. -->
             <section class="panel">
                 <h2>More Dashboards & Reports</h2>
                 <p class="lede">Jump straight into specialist views when you need deeper analysis or exports.</p>
@@ -610,6 +628,7 @@ if ($result = mysqli_query($conn, $auditTrailSql)) {
                 </div>
             </section>
 
+            <!-- Return to the role-based dashboard. -->
             <a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">← Back to your dashboard</a>
         </main>
     </body>

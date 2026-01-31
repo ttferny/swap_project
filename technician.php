@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Technician workspace: helper queries and request handlers.
+
 /**
  * Build a current snapshot of all equipment maintenance statuses for the dashboard.
  *
@@ -134,6 +136,7 @@ function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 	];
 }
 
+// Downtime helpers to open/close maintenance records.
 function open_downtime_record(mysqli $conn, int $equipmentId, int $actorUserId, string $status): void
 {
 	$openCheck = mysqli_prepare(
@@ -177,6 +180,7 @@ function close_downtime_record(mysqli $conn, int $equipmentId, int $actorUserId)
 	}
 }
 
+// Booking flagging helper to protect future reservations.
 function flag_bookings_for_downtime(mysqli $conn, int $equipmentId, string $status): void
 {
 	$reason = sprintf('Machine marked %s on %s', $status, date('Y-m-d H:i'));
@@ -191,6 +195,7 @@ function flag_bookings_for_downtime(mysqli $conn, int $equipmentId, string $stat
 	}
 }
 
+// Transition handler to connect equipment status with downtime logs.
 function handle_downtime_transition(mysqli $conn, int $equipmentId, string $previousStatus, string $newStatus, int $actorUserId): void
 {
 	$previousStatus = strtolower($previousStatus);
@@ -207,6 +212,7 @@ function handle_downtime_transition(mysqli $conn, int $equipmentId, string $prev
 	}
 }
 
+// Access control and technician context setup.
 $currentUser = enforce_capability($conn, 'technician.console');
 $currentRole = strtolower(trim((string) ($currentUser['role_name'] ?? '')));
 enforce_role_access(['technician', 'admin'], $currentUser);
@@ -257,6 +263,8 @@ $newTaskNotice = null;
 $lastUpdatedEquipmentId = null;
 $shouldLoadStatusSnapshot = true;
 $minRequestDate = (new DateTimeImmutable('today'))->modify('+3 days')->format('Y-m-d');
+
+// Restore flash messages for task and status updates.
 $taskFlash = flash_retrieve('technician.tasks');
 if (is_array($taskFlash) && isset($taskFlash['messages']) && is_array($taskFlash['messages'])) {
 	foreach (['success', 'error'] as $type) {
@@ -294,6 +302,7 @@ if (is_array($requestFlash)) {
 	}
 }
 
+// Handle POST actions for requests, tasks, and status updates.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	if (!$canMaintain) {
 		$maintenanceStatusMessages['error'][] = 'You are not authorised to modify maintenance records.';
@@ -302,6 +311,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		]);
 		redirect_to_current_uri('technician.php');
 	}
+	// New maintenance task request workflow.
 	if (isset($_POST['maintenance_task_request'])) {
 		$newTaskFormState = [
 			'equipment_id' => trim((string) ($_POST['equipment_id'] ?? '')),
@@ -429,6 +439,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			'form' => $newTaskFormState,
 		]);
 		redirect_to_current_uri('technician.php');
+	// Mark a maintenance task as in progress.
 	} elseif (isset($_POST['maintenance_task_progress'])) {
 		$taskId = (int) ($_POST['task_id'] ?? 0);
 		$submittedToken = (string) ($_POST['csrf_token'] ?? '');
@@ -465,6 +476,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		}
 		flash_store('technician.tasks', ['messages' => $maintenanceTaskStatusMessages]);
 		redirect_to_current_uri('technician.php');
+	// Cancel a maintenance task.
 	} elseif (isset($_POST['maintenance_task_cancel'])) {
 		$taskId = (int) ($_POST['task_id'] ?? 0);
 		$submittedToken = (string) ($_POST['csrf_token'] ?? '');
@@ -501,6 +513,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		}
 		flash_store('technician.tasks', ['messages' => $maintenanceTaskStatusMessages]);
 		redirect_to_current_uri('technician.php');
+	// Complete a maintenance task and log the record.
 	} elseif (isset($_POST['maintenance_task_complete'])) {
 		$taskId = (int) ($_POST['task_id'] ?? 0);
 		$submittedToken = (string) ($_POST['csrf_token'] ?? '');
@@ -607,6 +620,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		}
 		flash_store('technician.tasks', ['messages' => $maintenanceTaskStatusMessages]);
 		redirect_to_current_uri('technician.php');
+	// Update a machine's current status.
 	} elseif (isset($_POST['maintenance_status_update'])) {
 		$shouldLoadStatusSnapshot = true;
 		$equipmentId = (int) ($_POST['equipment_id'] ?? 0);
@@ -686,6 +700,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 	}
 }
 
+// Load the live equipment status snapshot for the dashboard.
 if ($shouldLoadStatusSnapshot) {
 	$snapshot = build_equipment_status_snapshot($conn);
 	if ($snapshot['error'] !== null) {
@@ -712,12 +727,14 @@ if ($shouldLoadStatusSnapshot) {
 	}
 }
 
+// Fetch upcoming maintenance tasks for the schedule card.
 $scheduleResult = fetch_upcoming_maintenance_tasks($conn);
 $maintenanceScheduleTasks = $scheduleResult['tasks'];
 if ($scheduleResult['error'] !== null) {
 	$maintenanceScheduleError = $scheduleResult['error'];
 }
 
+// Build equipment options for history and request forms.
 $equipmentResult = mysqli_query(
 	$conn,
 	'SELECT equipment_id, name FROM equipment ORDER BY name ASC'
@@ -742,6 +759,7 @@ if ($equipmentResult === false) {
 	mysqli_free_result($equipmentResult);
 }
 
+// Optional maintenance history view for a selected machine.
 $selectedHistoryEquipmentRaw = trim((string) ($_GET['equipment_id'] ?? ''));
 if ($selectedHistoryEquipmentRaw !== '') {
 	if (!ctype_digit($selectedHistoryEquipmentRaw)) {
@@ -795,6 +813,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 	}
 }
 
+// Technician dashboard page markup begins.
 ?>
 <!DOCTYPE html>
 <html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
@@ -810,6 +829,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
 		<style>
+			/* Theme variables and layout styling for the technician workspace. */
 			:root {
 				--bg: #fffaf5;
 				--accent: #f97316;
@@ -1690,6 +1710,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 		</style>
 	</head>
 	<body>
+		<!-- Technician workspace header and global actions. -->
 		<header>
 			<div class="banner">
 				<h1>Technician Workspace (Preview)</h1>
@@ -1746,6 +1767,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 			</div>
 		</header>
 		<main>
+			<!-- Introductory copy for the technician workspace preview. -->
 			<div class="intro">
 				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
@@ -1754,8 +1776,10 @@ if ($selectedHistoryEquipmentRaw !== '') {
 					tested while development continues.
 				</p>
 			</div>
+			<!-- Primary technician action cards. -->
 			<section class="grid">
 				<div class="card">
+					<!-- Maintenance request intake form. -->
 					<h2>Request Maintenance Work</h2>
 					<p>Log machines that need attention so managers can schedule or approve the work.</p>
 					<?php if ($newTaskError !== null): ?>
@@ -1838,6 +1862,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 					<?php endif; ?>
 				</div>
 				<div class="card">
+					<!-- Live equipment status snapshot and updates. -->
 					<h2>Maintenance Status</h2>
 					<p>Request the latest service windows, calibration holds, and safety notices.</p>
 					<?php if ($maintenanceStatusError !== ''): ?>
@@ -1911,6 +1936,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 					<?php endif; ?>
 				</div>
 				<div class="card">
+					<!-- Upcoming maintenance schedule for technicians. -->
 					<h2>Maintenance Schedule</h2>
 					<p>Upcoming service commitments and their assigned leads.</p>
 					<?php if ($maintenanceScheduleError !== ''): ?>
@@ -2008,11 +2034,13 @@ if ($selectedHistoryEquipmentRaw !== '') {
 					<?php endif; ?>
 				</div>
 				<div class="card">
+					<!-- Maintenance history lookup and logs. -->
 					<h2>View Maintenance History</h2>
 					<p>Review completed maintenance logs, downtime windows, and technician notes.</p>
 					<?php if ($maintenanceHistoryEquipmentError !== ''): ?>
 						<p class="status-error" role="alert"><?php echo htmlspecialchars($maintenanceHistoryEquipmentError, ENT_QUOTES); ?></p>
 					<?php elseif (!empty($maintenanceHistoryEquipment)): ?>
+						<!-- Equipment selector to filter maintenance records. -->
 						<form method="get" class="history-form">
 							<label class="sr-only" for="maintenance-history-equipment">Select equipment</label>
 							<select id="maintenance-history-equipment" name="equipment_id" class="history-select">
@@ -2025,12 +2053,14 @@ if ($selectedHistoryEquipmentRaw !== '') {
 							</select>
 							<button type="submit" class="status-action status-action--progress history-submit">View</button>
 						</form>
+						<!-- Selected equipment maintenance log output. -->
 						<?php if ($selectedHistoryEquipmentId !== null): ?>
 							<?php if ($maintenanceHistoryRecordsError !== ''): ?>
 								<p class="status-error" role="alert"><?php echo htmlspecialchars($maintenanceHistoryRecordsError, ENT_QUOTES); ?></p>
 							<?php elseif (empty($maintenanceHistoryRecords)): ?>
 								<p class="task-empty">No maintenance records found for this equipment.</p>
 							<?php else: ?>
+								<!-- Maintenance history list for the selected machine. -->
 								<ul class="history-list">
 									<?php foreach ($maintenanceHistoryRecords as $record): ?>
 										<?php

@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current user and enforce incident review access.
 $currentUser = enforce_capability($conn, 'incidents.review');
 enforce_role_access(['admin', 'manager'], $currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
@@ -11,11 +12,13 @@ if ($userFullName === '') {
 	$userFullName = 'Manager';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
+// CSRF tokens for logout and incident actions.
 $logoutToken = generate_csrf_token('logout_form');
 $assignToken = generate_csrf_token('assign_incident');
 $investigationToken = generate_csrf_token('update_investigation');
 $historyFallback = dashboard_home_path($currentUser);
 
+// Flash message placeholders for assignments and investigations.
 $assignmentError = null;
 $assignmentNotice = null;
 $investigationUpdateError = null;
@@ -38,6 +41,7 @@ if (is_array($investigationFlash)) {
 		$investigationUpdateNotice = $investigationFlash['notice'];
 	}
 }
+// Staff list for assignment dropdown.
 $staffMembers = [];
 $staffLookup = [];
 
@@ -56,6 +60,7 @@ if ($staffResult !== false) {
 	mysqli_free_result($staffResult);
 }
 
+// Handle staff assignment submissions.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_incident'])) {
 	$csrfToken = (string) ($_POST['csrf_token'] ?? '');
 	$incidentId = (int) ($_POST['incident_id'] ?? 0);
@@ -159,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_incident'])) {
 	redirect_to_current_uri('incident-reports.php');
 }
 
+// Handle investigation closure submissions.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_investigation'])) {
 	$csrfToken = (string) ($_POST['csrf_token'] ?? '');
 	$investigationId = (int) ($_POST['investigation_id'] ?? 0);
@@ -254,6 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_investigation'
 	redirect_to_current_uri('incident-reports.php');
 }
 
+// Incident and investigation datasets for rendering.
 $incidents = [];
 $incidentsError = null;
 
@@ -273,6 +280,7 @@ $pendingTriageCount = 0;
 $inProgressCount = 0;
 $closedCount = 0;
 
+// Load incident reports that are not yet assigned.
 $incidentSql = 'SELECT i.incident_id, i.severity, i.category, i.location, i.description, i.status, i.created_at, i.updated_at,
 		u.full_name, u.tp_admin_no, r.role_name AS reporter_role,
 		e.name AS equipment_name, e.location AS equipment_location
@@ -296,6 +304,7 @@ if ($incidentResult === false) {
 	mysqli_free_result($incidentResult);
 }
 
+// Aggregate incident status counts for summary cards.
 $statusResult = mysqli_query($conn, 'SELECT status, COUNT(*) AS total FROM incidents GROUP BY status');
 if ($statusResult !== false) {
 	while ($row = mysqli_fetch_assoc($statusResult)) {
@@ -312,6 +321,7 @@ $pendingTriageCount = $statusCounts['submitted'];
 $inProgressCount = $statusCounts['under_review'] + $statusCounts['action_required'];
 $closedCount = $statusCounts['closed'];
 
+// Load open investigations for active follow-up.
 	$investigationSql = 'SELECT ii.investigation_id, ii.incident_id, ii.assigned_to, ii.findings, ii.actions_taken, ii.closed_at, ii.created_at, ii.updated_at,
 		i.severity, i.category, i.status, i.description AS incident_description, i.location,
 		e.name AS equipment_name, e.location AS equipment_location,
@@ -338,6 +348,7 @@ if ($investigationResult === false) {
 	mysqli_free_result($investigationResult);
 }
 
+// Load recently closed investigations for review.
 $closedInvestigationSql = 'SELECT ii.investigation_id, ii.incident_id, ii.assigned_to, ii.findings, ii.actions_taken, ii.closed_at, ii.created_at, ii.updated_at,
 		i.severity, i.category, i.status, i.description AS incident_description, i.location,
 		e.name AS equipment_name, e.location AS equipment_location,
@@ -388,6 +399,7 @@ $statusLabels = [
 	'closed' => 'Closed',
 ];
 
+// Build a readable location label for incident displays.
 function format_incident_location(string $incidentLocation, string $equipmentName, string $equipmentLocation): string
 {
 	$location = trim($incidentLocation);
@@ -418,6 +430,7 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 			rel="stylesheet"
 		/>
 		<script src="assets/js/history-guard.js" defer></script>
+		<!-- Base styles for incident review screens. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -959,6 +972,7 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 		</style>
 	</head>
 	<body>
+		<!-- Header with search and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1>Safety Incident Reports</h1>
@@ -1025,10 +1039,12 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 			</div>
 		</header>
 		<main>
+			<!-- Intro for incident review workflow. -->
 			<section class="intro" aria-labelledby="incident-intro-title">
 				<h2 id="incident-intro-title">Safety Incidents and Investigations</h2>
 				<p>Review reported safety incidents, assign investigations, and document findings and follow-up actions for the AMC team.</p>
 			</section>
+			<!-- Summary cards for incident status counts. -->
 			<section class="summary-grid" aria-label="Incident status summary">
 				<article class="summary-card" aria-label="Awaiting triage">
 					<h3>Awaiting Triage</h3>
@@ -1051,6 +1067,7 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 					<span class="status-chip"><span class="status-dot"></span>All time incident submissions</span>
 				</article>
 			</section>
+			<!-- Incident list with assignment controls. -->
 			<section class="card" aria-labelledby="incident-list-title">
 				<h2 id="incident-list-title">All Incident Reports</h2>
 				<p>Review the full history of submitted incident reports across the AMC.</p>
@@ -1163,6 +1180,7 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 					</div>
 				<?php endif; ?>
 			</section>
+			<!-- Active investigations with close-out forms. -->
 			<section class="card" aria-labelledby="investigation-list-title">
 				<h2 id="investigation-list-title">Incident Investigations</h2>
 				<p>Track assigned investigations, findings, and follow-up actions.</p>
@@ -1261,6 +1279,7 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 					</div>
 				<?php endif; ?>
 			</section>
+			<!-- Recently closed investigations for reference. -->
 			<section class="card" aria-labelledby="closed-investigation-title">
 				<h2 id="closed-investigation-title">Closed Investigations</h2>
 				<p>Recently closed investigations with recorded findings and actions.</p>

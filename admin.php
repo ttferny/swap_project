@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve current admin user and enforce role-based access.
 $currentUser = enforce_capability($conn, 'admin.core');
 enforce_role_access(['admin'], $currentUser);
 $dashboardHref = dashboard_home_path($currentUser);
@@ -12,6 +13,7 @@ if ($userFullName === '') {
 	$userFullName = 'Guest User';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
+// CSRF token for the logout action.
 $logoutToken = generate_csrf_token('logout_form');
 ?>
 <!DOCTYPE html>
@@ -26,6 +28,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<!-- Base styles for the admin hub layout. -->
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -276,6 +279,7 @@ $logoutToken = generate_csrf_token('logout_form');
 		</style>
 	</head>
 	<body>
+		<!-- Sticky header with search, notifications, and profile menu. -->
 		<header>
 			<div class="banner">
 				<h1>Admin Workspace (Preview)</h1>
@@ -332,6 +336,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			</div>
 		</header>
 		<main>
+			<!-- Intro copy for the admin hub. -->
 			<div class="intro">
 				<h2><?php echo htmlspecialchars($userFullName, ENT_QUOTES); ?></h2>
 				<p>
@@ -340,6 +345,7 @@ $logoutToken = generate_csrf_token('logout_form');
 					preview how quick links and summaries will feel once the real tools arrive.
 				</p>
 			</div>
+			<!-- Primary navigation cards for admin modules. -->
 			<section class="grid">
 				<a class="card" href="admin-users.php">
 					<h2>User Accounts</h2>
@@ -394,6 +400,7 @@ $logoutToken = generate_csrf_token('logout_form');
 					<p>Submit or triage hazard reports when you need to reproduce user flows.</p>
 				</a>
 			</section>
+			<!-- Reminder banner about admin privileges. -->
 			<div class="callout">
 				<strong>Full-system authority:</strong> You’re signed in as an administrator, so every module and configuration endpoint is available across the platform. Use this hub as your starting point and jump directly into any workspace above.
 			</div>

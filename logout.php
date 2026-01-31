@@ -4,10 +4,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Resolve redirect target and CSRF token for logout.
 $redirectTarget = sanitize_redirect_target($_POST['redirect_to'] ?? $_GET['redirect'] ?? '') ?: 'login.php';
 $csrfToken = $_POST['csrf_token'] ?? null;
 $logoutMessage = 'You have been signed out.';
 
+// Validate logout request and CSRF token.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !validate_csrf_token('logout_form', $csrfToken)) {
 	$logoutMessage = 'We could not verify your logout request.';
 	$_SESSION['auth_notice'] = $logoutMessage;
@@ -15,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !validate_csrf_token('logout_form',
 	exit;
 }
 
+// Audit and clear active session records.
 $actorId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 $entityId = $actorId;
 $details = [
@@ -31,6 +34,7 @@ if (isset($conn) && $conn instanceof mysqli) {
 
 unset($_SESSION['active_session_token']);
 
+// Clear authentication state and redirect.
 clear_jwt_cookie();
 reset_session_state();
 $_SESSION['auth_notice'] = $logoutMessage;

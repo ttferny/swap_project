@@ -4,22 +4,27 @@ declare(strict_types=1);
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
+// Block CLI execution for the HTTP-only JSON feed.
 if (php_sapi_name() === 'cli') {
 	echo json_encode(['error' => 'Feed is not available via CLI context.'], JSON_PRETTY_PRINT) . PHP_EOL;
 	exit;
 }
 
+// Enforce GET-only access to the feed endpoint.
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 	http_response_code(405);
 	header('Allow: GET');
 	exit;
 }
 
+// JSON response headers for real-time polling.
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
+// Require authenticated roles to access maintenance telemetry.
 require_login(['admin', 'manager', 'technician']);
 
+// Feed configuration and aggregation counters.
 const FEED_LIMIT = 5;
 $now = new DateTimeImmutable('now');
 $downtimeEntries = [];
@@ -29,6 +34,7 @@ $lastChangeEpoch = 0;
 $activeDowntimeCount = 0;
 $pendingDecisions = 0;
 
+// Parse database datetime strings safely.
 function parse_datetime(?string $value): ?DateTimeImmutable
 {
 	if ($value === null || $value === '') {
@@ -41,6 +47,7 @@ function parse_datetime(?string $value): ?DateTimeImmutable
 	}
 }
 
+// Build human-readable duration labels.
 function duration_label(?DateTimeImmutable $start, ?DateTimeImmutable $end): string
 {
 	if ($start === null) {
@@ -63,6 +70,7 @@ function duration_label(?DateTimeImmutable $start, ?DateTimeImmutable $end): str
 	return $hours . 'h ' . $remainder . 'm';
 }
 
+// Build relative time labels for UI display.
 function relative_label(?DateTimeImmutable $point, DateTimeImmutable $reference): string
 {
 	if ($point === null) {
@@ -84,16 +92,19 @@ function relative_label(?DateTimeImmutable $point, DateTimeImmutable $reference)
 	return $point->format('M j, g:ia');
 }
 
+// Short label for timestamps in cards.
 function short_label(?DateTimeImmutable $point): string
 {
 	return $point ? $point->format('M j, g:ia') : 'Unknown time';
 }
 
+// ISO-8601 formatter helper.
 function iso_value(?DateTimeImmutable $point): ?string
 {
 	return $point ? $point->format(DateTimeInterface::ATOM) : null;
 }
 
+// Load recent downtime events for the live feed.
 try {
 	$downtimeSql = "SELECT
 			mr.record_id,
@@ -158,6 +169,7 @@ try {
 	record_system_error($downtimeException, ['route' => 'maintenance-status-feed', 'segment' => 'downtime']);
 }
 
+// Load recent maintenance tasks for the live feed.
 try {
 	$tasksSql = "SELECT
 			mt.task_id,
@@ -212,6 +224,7 @@ try {
 	record_system_error($taskException, ['route' => 'maintenance-status-feed', 'segment' => 'tasks']);
 }
 
+// Compute status label and response metadata.
 $metaStatusLabel = 'Live telemetry synced.';
 
 if ($lastChangeEpoch > 0) {
@@ -235,12 +248,14 @@ if (!empty($errors)) {
 	$meta['errors'] = $errors;
 }
 
+// Build the final response payload.
 $response = [
 	'downtime' => $downtimeEntries,
 	'tasks' => $taskEntries,
 	'meta' => $meta,
 ];
 
+// Encode response and compute ETag for caching.
 $json = json_encode($response, JSON_UNESCAPED_SLASHES);
 if ($json === false) {
 	http_response_code(500);
@@ -248,6 +263,7 @@ if ($json === false) {
 	exit;
 }
 
+// Honor conditional requests via ETag.
 $etag = 'W/"' . substr(hash('sha256', $json), 0, 32) . '"';
 $clientTag = isset($_SERVER['HTTP_IF_NONE_MATCH']) ? trim((string) $_SERVER['HTTP_IF_NONE_MATCH']) : '';
 if ($clientTag !== '' && $clientTag === $etag) {
@@ -256,6 +272,7 @@ if ($clientTag !== '' && $clientTag === $etag) {
 	exit;
 }
 
+// Emit ETag and freshness headers before the payload.
 header('ETag: ' . $etag);
 $freshness = $lastChangeEpoch > 0 ? max(0, $now->getTimestamp() - $lastChangeEpoch) : 0;
 header('X-Data-Freshness: ' . $freshness);
