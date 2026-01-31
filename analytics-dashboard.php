@@ -134,12 +134,25 @@ foreach ($equipmentWeekly as $equipmentData) {
 		}
 	}
 }
-if ($maxBookingCount === 0) {
-	$maxBookingCount = 1;
+
+// Expand to a clean multiple so chart bars rest on a sensible baseline.
+$maxBookingCount = max(1, $maxBookingCount);
+$maxBookingCount = (int) ceil($maxBookingCount / 5) * 5;
+$maxBookingCount = max(5, $maxBookingCount);
+
+$targetTicks = 6;
+$tickStep = max(1, (int) ceil($maxBookingCount / $targetTicks));
+if ($tickStep > 5) {
+	$tickStep = (int) ceil($tickStep / 5) * 5;
 }
 
-$tickValues = [30, 25, 20, 15, 10, 5, 0];
-$maxBookingCount = 30;
+$tickValues = [];
+for ($tick = $maxBookingCount; $tick >= 0; $tick -= $tickStep) {
+	$tickValues[] = $tick;
+}
+if (empty($tickValues) || end($tickValues) !== 0) {
+	$tickValues[] = 0;
+}
 
 $palette = ['#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0f766e', '#db2777', '#b45309', '#0ea5e9', '#334155'];
 $colorIndex = 0;
@@ -551,34 +564,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 				gap: 0.75rem;
 			}
 
-			.top-nav {
-				display: flex;
-				gap: 0.75rem;
-				align-items: center;
-				flex-wrap: wrap;
-				margin: 0;
-				padding: 0;
-				list-style: none;
-			}
 
-			.top-nav a {
-				display: inline-flex;
-				align-items: center;
-				gap: 0.35rem;
-				padding: 0.45rem 0.85rem;
-				border-radius: 0.75rem;
-				background: #e2e8f0;
-				color: #0f172a;
-				font-weight: 600;
-				text-decoration: none;
-				transition: background 0.2s ease, color 0.2s ease;
-			}
-
-			.top-nav a:hover,
-			.top-nav a:focus-visible {
-				background: #cbd5e1;
-				outline: none;
-			}
 
 			.primary-button {
 				display: inline-flex;
@@ -809,10 +795,9 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 			}
 
 			.bar-chart {
-				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+				display: flex;
 				gap: 1rem;
-				align-items: end;
+				align-items: flex-end;
 				height: 260px;
 				padding: 1.25rem 1rem 1rem 3.5rem;
 				margin-top: 1rem;
@@ -867,12 +852,14 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 			}
 
 			.chart-column {
-				display: grid;
-				grid-template-rows: 1fr auto;
+				display: flex;
+				flex-direction: column;
+				justify-content: flex-end;
 				height: 100%;
 				gap: 0.35rem;
 				position: relative;
 				padding: 0 0.4rem;
+				min-width: 120px;
 			}
 
 			.chart-column::after {
@@ -891,10 +878,12 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 
 			.chart-group {
 				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(14px, 1fr));
+				grid-auto-flow: column;
+				grid-auto-columns: minmax(10px, 1fr);
 				align-items: end;
 				gap: 6px;
 				height: 100%;
+				min-height: 0;
 			}
 
 			.bar {
@@ -1232,13 +1221,7 @@ $monthlySafetyReportText = implode("\r\n", $reportLines);
 					</details>
 				</div>
 			</div>
-			<nav aria-label="Primary">
-				<ul class="top-nav">
-					<li><a href="analytics-dashboard.php" aria-current="page">Analytics</a></li>
-					<li><a href="technician.php">Maintenance</a></li>
-					<li><a href="book-machines.php">Booking</a></li>
-				</ul>
-			</nav>
+
 		</header>
 		<main>
 			<section class="intro" aria-labelledby="analytics-intro-title">

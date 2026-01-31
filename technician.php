@@ -60,7 +60,7 @@ function build_equipment_status_snapshot(mysqli $conn): array
 		)
 		: 'No equipment records were found.';
 
-							aria-label="Search icon"
+	return [
 		'rows' => $rows,
 		'counts' => $counts,
 		'message' => $message,
@@ -68,12 +68,12 @@ function build_equipment_status_snapshot(mysqli $conn): array
 	];
 }
 
-					<button class="icon-button" aria-label="Notifications">
+/**
  * Fetch the next few upcoming maintenance tasks for the dashboard schedule card.
  *
  * @return array{tasks: array<int, array<string, mixed>>, error: string|null}
  */
-							aria-label="Notifications bell"
+function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 {
 	$tasks = [];
 	$error = null;
@@ -82,13 +82,6 @@ function build_equipment_status_snapshot(mysqli $conn): array
 			mt.task_id,
 			mt.title,
 			mt.description,
-			<nav aria-label="Primary">
-				<ul class="top-nav">
-					<li><a href="analytics-dashboard.php">Analytics</a></li>
-					<li><a href="technician.php" aria-current="page">Maintenance</a></li>
-					<li><a href="book-machines.php">Booking</a></li>
-				</ul>
-			</nav>
 			mt.task_type,
 			mt.priority,
 			mt.status,
