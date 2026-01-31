@@ -20,6 +20,9 @@ if (!headers_sent()) {
 	);
 }
 
+// Resolve fallback destination for history guard consumers.
+$historyFallback = dashboard_home_path();
+
 $adminNumber = '';
 $errors = [];
 $infoMessages = [];
