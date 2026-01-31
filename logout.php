@@ -23,7 +23,13 @@ $details = [
 ];
 if (isset($conn) && $conn instanceof mysqli) {
 	log_audit_event($conn, $actorId, 'logout', 'authentication', $entityId, $details);
+	if (function_exists('clear_active_user_session')) {
+		$fingerprint = isset($_SESSION['device_fingerprint']) ? (string) $_SESSION['device_fingerprint'] : null;
+		clear_active_user_session($conn, $actorId, $fingerprint);
+	}
 }
+
+unset($_SESSION['active_session_token']);
 
 clear_jwt_cookie();
 reset_session_state();

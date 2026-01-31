@@ -1,8 +1,86 @@
 <?php
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') {
+	$requestedScript = realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) ?: '';
+	if ($requestedScript !== '' && $requestedScript === realpath(__FILE__)) {
+		http_response_code(404);
+		exit;
+	}
+}
+
 if (!defined('APP_REQUEST_START')) {
 	define('APP_REQUEST_START', microtime(true));
+}
+
+if (!function_exists('log_audit_event')) {
+	function log_audit_event(mysqli $conn, ?int $actorId, string $action, string $entityType, ?int $entityId, array $details = []): void
+	{
+		$ipAddress = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+		if ($ipAddress === '') {
+			$ipAddress = null;
+		}
+		$userAgent = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
+		if ($userAgent !== '') {
+			$userAgent = function_exists('mb_substr') ? mb_substr($userAgent, 0, 255) : substr($userAgent, 0, 255);
+		} else {
+			$userAgent = null;
+		}
+		$detailsJson = null;
+		if (!empty($details)) {
+			$detailsJson = json_encode($details, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+			if ($detailsJson === false) {
+				$detailsJson = null;
+			}
+		}
+		$stmt = mysqli_prepare(
+			$conn,
+			'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, ip_address, user_agent, details) VALUES (NULLIF(?, 0), ?, ?, NULLIF(?, 0), ?, ?, ?)'
+		);
+		if ($stmt) {
+			$actorParam = $actorId ?? 0;
+			$entityParam = $entityId ?? 0;
+			mysqli_stmt_bind_param(
+				$stmt,
+				'ississs',
+				$actorParam,
+				$action,
+				$entityType,
+				$entityParam,
+				$ipAddress,
+				$userAgent,
+				$detailsJson
+			);
+			@mysqli_stmt_execute($stmt);
+			mysqli_stmt_close($stmt);
+		}
+		try {
+			$logDir = application_log_directory();
+			@chmod($logDir, 0700);
+			$payload = [
+				'timestamp' => gmdate('c'),
+				'actor_user_id' => $actorId,
+				'action' => $action,
+				'entity_type' => $entityType,
+				'entity_id' => $entityId,
+				'ip_address' => $ipAddress,
+				'user_agent' => $userAgent,
+				'context' => $details,
+			];
+			$logFile = $logDir . '/app-audit.log';
+			$hashFile = $logDir . '/app-audit.log.sha256';
+			$logEntry = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+			if ($logEntry !== false) {
+				@file_put_contents($logFile, $logEntry . PHP_EOL, FILE_APPEND);
+				$hash = @hash_file('sha256', $logFile);
+				if ($hash !== false) {
+					@file_put_contents($hashFile, $hash);
+				}
+			}
+		} catch (Throwable $loggingError) {
+			// Keep failures silent to avoid cascading errors on audit writes.
+		}
+	}
 }
 
 if (!function_exists('is_https_request')) {
@@ -19,6 +97,25 @@ if (!function_exists('is_https_request')) {
 	}
 }
 
+if (!function_exists('apply_runtime_security_baseline')) {
+	/**
+	 * Harden common PHP/runtime misconfigurations (OWASP A6) to avoid unsafe defaults.
+	 */
+	function apply_runtime_security_baseline(): void
+	{
+		// Suppress verbose errors to clients but keep logs on.
+		@ini_set('display_errors', '0');
+		@ini_set('log_errors', '1');
+		@ini_set('expose_php', '0');
+		// Defensive session defaults even before session_start.
+		@ini_set('session.use_strict_mode', '1');
+		@ini_set('session.use_only_cookies', '1');
+		@ini_set('session.cookie_httponly', '1');
+		@ini_set('session.cookie_samesite', 'Lax');
+		@ini_set('session.cookie_secure', is_https_request() ? '1' : '0');
+	}
+}
+
 if (!function_exists('session_fingerprint_seed')) {
 	function session_fingerprint_seed(): string
 	{
@@ -29,6 +126,35 @@ if (!function_exists('session_fingerprint_seed')) {
 			$remoteAddr = implode('.', array_slice($segments, 0, 2));
 		}
 		return $userAgent . '|' . $remoteAddr;
+	}
+}
+
+if (!function_exists('sanitize_request_input')) {
+	/**
+	 * Strip control characters and enforce max length to reduce injection risk (OWASP A1).
+	 */
+	function sanitize_request_input(): void
+	{
+		$sanitize = static function (&$value) use (&$sanitize): void {
+			if (is_array($value)) {
+				foreach ($value as &$v) {
+					$sanitize($v);
+				}
+				return;
+			}
+			$value = (string) $value;
+			$value = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $value);
+			if ((function_exists('mb_substr') ? mb_strlen($value) : strlen($value)) > 4000) {
+				$value = function_exists('mb_substr') ? mb_substr($value, 0, 4000) : substr($value, 0, 4000);
+			}
+		};
+		foreach (['_GET', '_POST', '_COOKIE'] as $super) {
+			if (isset($GLOBALS[$super]) && is_array($GLOBALS[$super])) {
+				foreach ($GLOBALS[$super] as &$v) {
+					$sanitize($v);
+				}
+			}
+		}
 	}
 }
 
@@ -43,6 +169,24 @@ if (!function_exists('refresh_session_id')) {
 		if ($force || ($now - $last) >= 900) {
 			session_regenerate_id(true);
 			$_SESSION['session_regenerated_at'] = $now;
+		}
+	}
+}
+
+if (!function_exists('enforce_role_access')) {
+	/**
+	 * Ensure the authenticated user has one of the allowed roles (server-side RBAC).
+	 */
+	function enforce_role_access(array $allowedRoles, ?array $user = null): void
+	{
+		if ($user === null) {
+			$user = current_user();
+		}
+		$role = strtolower(trim((string) ($user['role_name'] ?? '')));
+		$allowed = array_map(static fn($r) => strtolower(trim((string) $r)), $allowedRoles);
+		if (!in_array($role, $allowed, true)) {
+			render_http_error(403, 'You do not have permission to access this area.');
+			exit;
 		}
 	}
 }
@@ -75,6 +219,25 @@ if (!function_exists('reset_session_state')) {
 			}
 		}
 		refresh_session_id(true);
+	}
+}
+
+if (!function_exists('enforce_session_timeout')) {
+	/**
+	 * Enforce idle timeout to reduce stolen-session impact (OWASP A3).
+	 */
+	function enforce_session_timeout(int $maxIdleSeconds = 1200): void
+	{
+		if (session_status() !== PHP_SESSION_ACTIVE) {
+			return;
+		}
+		$now = time();
+		$lastSeen = isset($_SESSION['last_seen_at']) ? (int) $_SESSION['last_seen_at'] : $now;
+		if (($now - $lastSeen) > $maxIdleSeconds) {
+			reset_session_state();
+			return;
+		}
+		$_SESSION['last_seen_at'] = $now;
 	}
 }
 
@@ -137,7 +300,26 @@ if (!function_exists('bootstrap_session')) {
 	}
 }
 
+apply_runtime_security_baseline();
 bootstrap_session();
+sanitize_request_input();
+
+if (!function_exists('get_csp_nonce')) {
+	function get_csp_nonce(): string
+	{
+		static $nonce = null;
+		if ($nonce !== null) {
+			return $nonce;
+		}
+		try {
+			$bytes = random_bytes(16);
+		} catch (Throwable $exception) {
+			$bytes = hash('sha256', microtime(true) . '|' . mt_rand(), true);
+		}
+		$nonce = rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+		return $nonce;
+	}
+}
 
 if (!function_exists('application_log_directory')) {
 	function application_log_directory(): string
@@ -150,11 +332,47 @@ if (!function_exists('application_log_directory')) {
 	}
 }
 
+if (!function_exists('static_cache_directory')) {
+	function static_cache_directory(): string
+	{
+		$cacheDir = __DIR__ . '/storage/cache';
+		if (!is_dir($cacheDir)) {
+			@mkdir($cacheDir, 0775, true);
+		}
+		return $cacheDir;
+	}
+}
+
+if (!function_exists('static_cache_remember')) {
+	/**
+	 * Simple filesystem-backed cache for non-dynamic lookups to reduce DB pressure.
+	 */
+	function static_cache_remember(string $key, int $ttlSeconds, callable $builder)
+	{
+		$cacheDir = static_cache_directory();
+		$path = $cacheDir . '/' . substr(hash('sha256', $key), 0, 32) . '.cache';
+		$now = time();
+		if (is_file($path)) {
+			$raw = @file_get_contents($path);
+			if ($raw !== false && $raw !== '') {
+				$data = json_decode($raw, true);
+				if (is_array($data) && isset($data['expires'], $data['payload']) && (int) $data['expires'] >= $now) {
+					return $data['payload'];
+				}
+			}
+		}
+		$value = $builder();
+		@file_put_contents($path, json_encode(['expires' => $now + $ttlSeconds, 'payload' => $value]));
+		return $value;
+	}
+}
+
 if (!function_exists('record_system_error')) {
 	function record_system_error(Throwable $throwable, array $context = []): void
 	{
 		try {
 			$logDir = application_log_directory();
+			@chmod($logDir, 0700);
 			$payload = [
 				'timestamp' => gmdate('c'),
 				'error_class' => get_class($throwable),
@@ -165,9 +383,14 @@ if (!function_exists('record_system_error')) {
 				'context' => $context,
 			];
 			$logFile = $logDir . '/app-error.log';
+			$hashFile = $logDir . '/app-error.log.sha256';
 			$logEntry = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 			if ($logEntry !== false) {
 				@file_put_contents($logFile, $logEntry . PHP_EOL, FILE_APPEND);
+				$hash = @hash_file('sha256', $logFile);
+				if ($hash !== false) {
+					@file_put_contents($hashFile, $hash);
+				}
 			}
 		} catch (Throwable $loggingError) {
 			// As a last resort, fall back to PHP's native error log to avoid surfacing stack traces to the UI.
@@ -179,7 +402,7 @@ if (!function_exists('record_system_error')) {
 if (!function_exists('render_http_error')) {
 	function render_http_error(int $statusCode, ?string $userMessage = null, ?string $userAction = null): void
 	{
-		$allowedStatuses = [400, 403, 404, 500];
+		$allowedStatuses = [400, 403, 404, 429, 500];
 		if (!in_array($statusCode, $allowedStatuses, true)) {
 			$statusCode = 500;
 		}
@@ -193,6 +416,10 @@ if (!function_exists('render_http_error')) {
 				'title' => 'You do not have permission to view this page.',
 				'message' => 'Your account is missing one of the required privileges.',
 			],
+					429 => [
+						'title' => 'You are sending requests too quickly.',
+						'message' => 'Please wait a moment before trying again.',
+					],
 			404 => [
 				'title' => 'We could not find what you were looking for.',
 				'message' => 'The link may be outdated or the resource may have moved.',
@@ -309,6 +536,39 @@ if (!function_exists('sanitize_redirect_target')) {
 	}
 }
 
+if (!function_exists('flash_store')) {
+	function flash_store(string $key, $value): void
+	{
+		bootstrap_session();
+		if (!isset($_SESSION['__flash']) || !is_array($_SESSION['__flash'])) {
+			$_SESSION['__flash'] = [];
+		}
+		$_SESSION['__flash'][$key] = $value;
+	}
+}
+
+if (!function_exists('flash_retrieve')) {
+	function flash_retrieve(string $key, $default = null)
+	{
+		bootstrap_session();
+		if (!isset($_SESSION['__flash'][$key])) {
+			return $default;
+		}
+		$value = $_SESSION['__flash'][$key];
+		unset($_SESSION['__flash'][$key]);
+		return $value;
+	}
+}
+
+if (!function_exists('redirect_to_current_uri')) {
+	function redirect_to_current_uri(?string $override = null): void
+	{
+		$target = sanitize_redirect_target($override ?? ($_SERVER['REQUEST_URI'] ?? '')) ?: '/swap_project/index.php';
+		header('Location: ' . $target);
+		exit;
+	}
+}
+
 if (!function_exists('dashboard_home_path')) {
 	function dashboard_home_path(?array $user = null): string
 	{
@@ -407,49 +667,13 @@ if (!function_exists('validate_csrf_token')) {
 		return hash_equals((string) $record['value'], (string) $token);
 	}
 }
-
-if (!function_exists('log_audit_event')) {
-	function log_audit_event(mysqli $conn, ?int $actorId, string $action, string $entityType, ?int $entityId, array $details = []): void
+if (!function_exists('logAuditEntry')) {
+	/**
+	 * Backwards-compatible helper used throughout older booking flows.
+	 */
+	function logAuditEntry(mysqli $conn, ?int $actorId, string $action, string $entityType, ?int $entityId, array $details = []): void
 	{
-		$ipAddress = substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
-		if ($ipAddress === '') {
-			$ipAddress = null;
-		}
-		$userAgent = (string) ($_SERVER['HTTP_USER_AGENT'] ?? '');
-		if ($userAgent !== '') {
-			$userAgent = function_exists('mb_substr') ? mb_substr($userAgent, 0, 255) : substr($userAgent, 0, 255);
-		} else {
-			$userAgent = null;
-		}
-		$detailsJson = null;
-		if (!empty($details)) {
-			$detailsJson = json_encode($details, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-			if ($detailsJson === false) {
-				$detailsJson = null;
-			}
-		}
-		$stmt = mysqli_prepare(
-			$conn,
-			'INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, ip_address, user_agent, details) VALUES (NULLIF(?, 0), ?, ?, NULLIF(?, 0), ?, ?, ?)'
-		);
-		if (!$stmt) {
-			return;
-		}
-		$actorParam = $actorId ?? 0;
-		$entityParam = $entityId ?? 0;
-		mysqli_stmt_bind_param(
-			$stmt,
-			'ississs',
-			$actorParam,
-			$action,
-			$entityType,
-			$entityParam,
-			$ipAddress,
-			$userAgent,
-			$detailsJson
-		);
-		mysqli_stmt_execute($stmt);
-		mysqli_stmt_close($stmt);
+		log_audit_event($conn, $actorId, $action, $entityType, $entityId, $details);
 	}
 }
 
@@ -536,12 +760,13 @@ if (!function_exists('apply_security_headers')) {
 		if (headers_sent()) {
 			return;
 		}
+		$scriptNonce = get_csp_nonce();
 		$cspDirectives = [
 			"default-src 'self'",
 			"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
 			"font-src 'self' https://fonts.gstatic.com",
 			"img-src 'self' data:",
-			"script-src 'self'",
+			"script-src 'self' 'nonce-" . $scriptNonce . "'",
 			"connect-src 'self'",
 			"form-action 'self'",
 			"frame-ancestors 'none'",
@@ -552,11 +777,134 @@ if (!function_exists('apply_security_headers')) {
 		header('X-Frame-Options: DENY');
 		header('Referrer-Policy: same-origin');
 		header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
-		header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-		header('Pragma: no-cache');
+		header('Cache-Control: private, max-age=60, must-revalidate');
+		header('Pragma: private');
 		header('Expires: 0');
 		if (is_https_request()) {
 			header('Strict-Transport-Security: max-age=63072000; includeSubDomains; preload');
+		}
+	}
+}
+
+if (!function_exists('basic_waf_guard')) {
+	/**
+	 * Minimal WAF-style guardrail against obvious bad traffic.
+	 */
+	function basic_waf_guard(): void
+	{
+		if (PHP_SAPI === 'cli') {
+			return;
+		}
+		$requestUri = strtolower((string) ($_SERVER['REQUEST_URI'] ?? ''));
+		$userAgent = strtolower((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+		$blockedSignatures = ['sqlmap', 'acunetix', 'nessus', 'nikto', 'curl', 'wget'];
+		foreach ($blockedSignatures as $sig) {
+			if ($userAgent !== '' && strpos($userAgent, $sig) !== false) {
+				if (function_exists('record_system_error')) {
+					record_system_error(new RuntimeException('Blocked by WAF signature'), ['signature' => $sig, 'ua' => $userAgent]);
+				}
+				render_http_error(403, 'Request blocked.');
+				exit;
+			}
+		}
+		$payload = $_SERVER['QUERY_STRING'] ?? '';
+		if ((function_exists('strlen') ? strlen($payload) : 0) > 4000) {
+			if (function_exists('record_system_error')) {
+				record_system_error(new RuntimeException('Blocked large query string'), ['len' => strlen($payload)]);
+			}
+			render_http_error(413, 'Request too large.');
+			exit;
+		}
+		$badFragments = ['union select', '<script', '../', '%00', 'sleep('];
+		foreach ($badFragments as $frag) {
+			if ($payload !== '' && stripos($payload, $frag) !== false) {
+				if (function_exists('record_system_error')) {
+					record_system_error(new RuntimeException('Blocked malformed payload'), ['fragment' => $frag]);
+				}
+				render_http_error(400, 'Malformed request.');
+				exit;
+			}
+		}
+	}
+}
+
+if (!function_exists('enforce_basic_rate_limit')) {
+	/**
+	 * Lightweight IP + token rate limiter to reduce DoS surface (OWASP A9).
+	 */
+	function enforce_basic_rate_limit(string $bucket = 'global', int $limit = 120, int $windowSeconds = 60, ?string $token = null): void
+	{
+		if (PHP_SAPI === 'cli') {
+			return;
+		}
+		$ip = trim((string) ($_SERVER['REMOTE_ADDR'] ?? ''));
+		$keys = [];
+		if ($ip !== '') {
+			$keys[] = substr(hash('sha256', $ip . '|' . $bucket), 0, 32);
+		}
+		if ($token !== null && $token !== '') {
+			$keys[] = substr(hash('sha256', $token . '|' . $bucket), 0, 32);
+		}
+		if (empty($keys)) {
+			return;
+		}
+		$now = time();
+		$storagePath = application_log_directory() . '/rate-limit.json';
+		$records = [];
+		$fp = @fopen($storagePath, 'c+');
+		if ($fp) {
+			@flock($fp, LOCK_EX);
+			$raw = stream_get_contents($fp);
+			if ($raw !== false && $raw !== '') {
+				$decoded = json_decode($raw, true);
+				if (is_array($decoded)) {
+					$records = $decoded;
+				}
+			}
+			// prune stale
+			foreach ($records as $key => $entry) {
+				$ts = isset($entry['ts']) ? (int) $entry['ts'] : 0;
+				if (($now - $ts) > $windowSeconds) {
+					unset($records[$key]);
+				}
+			}
+			$maxSeen = 0;
+			foreach ($keys as $bucketKey) {
+				$entry = $records[$bucketKey]['count'] ?? 0;
+				$entryTs = $records[$bucketKey]['ts'] ?? $now;
+				if (($now - (int) $entryTs) > $windowSeconds) {
+					$entry = 0;
+					$entryTs = $now;
+				}
+				$entry++;
+				$records[$bucketKey] = ['count' => $entry, 'ts' => $entryTs];
+				$maxSeen = max($maxSeen, $entry);
+			}
+			rewind($fp);
+			ftruncate($fp, 0);
+			fwrite($fp, json_encode($records));
+			@flock($fp, LOCK_UN);
+			fclose($fp);
+			$warnThreshold = (int) ceil($limit * 0.8);
+			if ($maxSeen >= $warnThreshold && function_exists('record_system_error')) {
+				record_system_error(new RuntimeException('Rate limit near capacity for ' . $bucket), [
+					'bucket' => $bucket,
+					'limit' => $limit,
+					'count' => $maxSeen,
+				]);
+			}
+			if ($maxSeen > $limit) {
+				if (function_exists('record_system_error')) {
+					record_system_error(new RuntimeException('Rate limit exceeded for ' . $bucket), [
+						'bucket' => $bucket,
+						'limit' => $limit,
+						'count' => $maxSeen,
+					]);
+				}
+				http_response_code(429);
+				header('Retry-After: ' . $windowSeconds);
+				exit('Too many requests. Please retry in a minute.');
+			}
 		}
 	}
 }
@@ -579,10 +927,103 @@ if (!function_exists('enforce_https_transport')) {
 
 enforce_https_transport();
 apply_security_headers();
+$userToken = isset($_SESSION['user_id']) ? 'user_' . (int) $_SESSION['user_id'] : null;
+basic_waf_guard();
+enforce_basic_rate_limit((string) ($_SERVER['SCRIPT_NAME'] ?? 'global'), 120, 60, $userToken);
+enforce_session_timeout();
+
+if (!function_exists('get_equipment_requirement_metadata')) {
+	/**
+	 * Cache equipment-to-certification requirements for the current request.
+	 */
+	function get_equipment_requirement_metadata(mysqli $conn): array
+	{
+		static $metadata = null;
+		if ($metadata !== null) {
+			return $metadata;
+		}
+		$metadata = [
+			'matrix' => [],
+			'has_requirements' => false,
+		];
+		$sql = 'SELECT e.equipment_id, erc.cert_id
+			FROM equipment e
+			LEFT JOIN equipment_required_certs erc ON erc.equipment_id = e.equipment_id
+			ORDER BY e.equipment_id ASC';
+		$result = mysqli_query($conn, $sql);
+		if ($result instanceof mysqli_result) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
+				if ($equipmentId <= 0) {
+					continue;
+				}
+				if (!isset($metadata['matrix'][$equipmentId])) {
+					$metadata['matrix'][$equipmentId] = [];
+				}
+				$certId = isset($row['cert_id']) ? (int) $row['cert_id'] : 0;
+				if ($certId > 0) {
+					$metadata['matrix'][$equipmentId][$certId] = true;
+					$metadata['has_requirements'] = true;
+				}
+			}
+			mysqli_free_result($result);
+		}
+		return $metadata;
+	}
+}
+
+if (!function_exists('should_limit_equipment_scope')) {
+	/**
+	 * Determine whether a user's equipment visibility should be restricted.
+	 */
+	function should_limit_equipment_scope(mysqli $conn, ?int $userId): bool
+	{
+		static $roleCache = [];
+		$normalizedUserId = (int) ($userId ?? 0);
+		if ($normalizedUserId <= 0) {
+			return false;
+		}
+		$metadata = get_equipment_requirement_metadata($conn);
+		if (empty($metadata['matrix']) || !$metadata['has_requirements']) {
+			return false;
+		}
+		if (!isset($roleCache[$normalizedUserId])) {
+			$roleName = 'user';
+			$roleStmt = mysqli_prepare(
+				$conn,
+				' SELECT LOWER(r.role_name) AS role_name
+					FROM users u
+					INNER JOIN roles r ON r.role_id = u.role_id
+					WHERE u.user_id = ?
+					LIMIT 1'
+			);
+			if ($roleStmt) {
+				mysqli_stmt_bind_param($roleStmt, 'i', $normalizedUserId);
+				if (mysqli_stmt_execute($roleStmt)) {
+					$result = mysqli_stmt_get_result($roleStmt);
+					if ($result instanceof mysqli_result) {
+						$row = mysqli_fetch_assoc($result);
+						if ($row) {
+							$resolvedRole = strtolower(trim((string) ($row['role_name'] ?? '')));
+							if ($resolvedRole !== '') {
+								$roleName = $resolvedRole;
+							}
+						}
+						mysqli_free_result($result);
+					}
+				}
+				mysqli_stmt_close($roleStmt);
+			}
+			$roleCache[$normalizedUserId] = $roleName;
+		}
+		$privilegedRoles = ['admin', 'manager', 'technician'];
+		return !in_array($roleCache[$normalizedUserId], $privilegedRoles, true);
+	}
+}
 
 if (!function_exists('get_user_equipment_access_map')) {
 	/**
-	 * Retrieve a cached map of equipment_ids the current user can access.
+	 * Derive the list of equipment the user can access based on certifications.
 	 */
 	function get_user_equipment_access_map(mysqli $conn, ?int $userId): array
 	{
@@ -594,23 +1035,66 @@ if (!function_exists('get_user_equipment_access_map')) {
 		if (isset($cache[$normalizedUserId])) {
 			return $cache[$normalizedUserId];
 		}
-		$allowed = [];
-		$stmt = mysqli_prepare($conn, 'SELECT equipment_id FROM user_equipment_access WHERE user_id = ?');
+		if (!should_limit_equipment_scope($conn, $normalizedUserId)) {
+			$cache[$normalizedUserId] = [];
+			return $cache[$normalizedUserId];
+		}
+		$metadata = get_equipment_requirement_metadata($conn);
+		$matrix = $metadata['matrix'];
+		if (empty($matrix)) {
+			$cache[$normalizedUserId] = [];
+			return $cache[$normalizedUserId];
+		}
+		$userCerts = [];
+		$stmt = mysqli_prepare(
+			$conn,
+			'SELECT cert_id, status, expires_at FROM user_certifications WHERE user_id = ?'
+		);
 		if ($stmt) {
 			mysqli_stmt_bind_param($stmt, 'i', $normalizedUserId);
 			if (mysqli_stmt_execute($stmt)) {
 				$result = mysqli_stmt_get_result($stmt);
-				if ($result) {
+				if ($result instanceof mysqli_result) {
+					$nowTs = time();
 					while ($row = mysqli_fetch_assoc($result)) {
-						$equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
-						if ($equipmentId > 0) {
-							$allowed[$equipmentId] = true;
+						$certId = isset($row['cert_id']) ? (int) $row['cert_id'] : 0;
+						if ($certId <= 0) {
+							continue;
 						}
+						$status = strtolower(trim((string) ($row['status'] ?? '')));
+						if ($status !== 'completed') {
+							continue;
+						}
+						$expiresAt = trim((string) ($row['expires_at'] ?? ''));
+						if ($expiresAt !== '') {
+							$expiresTs = strtotime($expiresAt);
+							if ($expiresTs !== false && $expiresTs < $nowTs) {
+								continue;
+							}
+						}
+						$userCerts[$certId] = true;
 					}
 					mysqli_free_result($result);
 				}
 			}
 			mysqli_stmt_close($stmt);
+		}
+		$allowed = [];
+		foreach ($matrix as $equipmentId => $requirements) {
+			if (empty($requirements)) {
+				$allowed[$equipmentId] = true;
+				continue;
+			}
+			$missingRequirement = false;
+			foreach ($requirements as $certId => $_) {
+				if (!isset($userCerts[$certId])) {
+					$missingRequirement = true;
+					break;
+				}
+			}
+			if (!$missingRequirement) {
+				$allowed[$equipmentId] = true;
+			}
 		}
 		$cache[$normalizedUserId] = $allowed;
 		return $allowed;
@@ -626,10 +1110,10 @@ if (!function_exists('user_can_access_equipment')) {
 		if ($equipmentId <= 0) {
 			return false;
 		}
-		$map = get_user_equipment_access_map($conn, $userId);
-		if (empty($map)) {
+		if (!should_limit_equipment_scope($conn, $userId)) {
 			return true;
 		}
+		$map = get_user_equipment_access_map($conn, $userId);
 		return isset($map[$equipmentId]);
 	}
 }
@@ -643,10 +1127,10 @@ if (!function_exists('user_can_access_any_equipment')) {
 		if (empty($equipmentIds)) {
 			return true;
 		}
-		$map = get_user_equipment_access_map($conn, $userId);
-		if (empty($map)) {
+		if (!should_limit_equipment_scope($conn, $userId)) {
 			return true;
 		}
+		$map = get_user_equipment_access_map($conn, $userId);
 		foreach ($equipmentIds as $equipmentId) {
 			$normalizedId = (int) $equipmentId;
 			if ($normalizedId > 0 && isset($map[$normalizedId])) {
@@ -784,6 +1268,272 @@ if (!function_exists('mask_sensitive_identifier')) {
 		$mask = $maskedLength > 0 ? str_repeat('*', $maskedLength) : '';
 		$suffix = $visible > 0 ? $substrFn($normalized, $totalLength - $visible) : '';
 		return $mask . $suffix;
+	}
+}
+
+if (!function_exists('derive_device_fingerprint')) {
+	function derive_device_fingerprint(): string
+	{
+		$remoteAddress = trim((string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'));
+		$addressSegments = explode('.', $remoteAddress);
+		if (count($addressSegments) >= 3) {
+			$remoteAddress = $addressSegments[0] . '.' . $addressSegments[1] . '.' . $addressSegments[2];
+		}
+		$segments = [
+			strtolower(trim((string) ($_SERVER['HTTP_USER_AGENT'] ?? 'unknown-agent'))),
+			strtolower(trim((string) ($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? ''))),
+			strtolower(trim((string) ($_SERVER['HTTP_SEC_CH_UA'] ?? ''))),
+			$remoteAddress,
+		];
+		return hash('sha256', implode('|', $segments));
+	}
+}
+
+if (!function_exists('current_device_fingerprint')) {
+	function current_device_fingerprint(): string
+	{
+		$fingerprint = isset($_SESSION['device_fingerprint']) ? (string) $_SESSION['device_fingerprint'] : '';
+		if ($fingerprint !== '') {
+			return $fingerprint;
+		}
+		$fingerprint = derive_device_fingerprint();
+		$_SESSION['device_fingerprint'] = $fingerprint;
+		return $fingerprint;
+	}
+}
+
+if (!function_exists('summarize_device_label')) {
+	function summarize_device_label(): string
+	{
+		$agent = trim((string) ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown device'));
+		if ($agent === '') {
+			return 'Unknown device';
+		}
+		return substr($agent, 0, 120);
+	}
+}
+
+if (!function_exists('ensure_user_session_registry')) {
+	function ensure_user_session_registry(mysqli $conn): void
+	{
+		static $ensured = false;
+		if ($ensured) {
+			return;
+		}
+		$sql = <<<SQL
+		CREATE TABLE IF NOT EXISTS user_active_sessions (
+			user_id BIGINT(20) NOT NULL,
+			device_fingerprint CHAR(64) NOT NULL DEFAULT '',
+			session_token CHAR(64) NOT NULL,
+			device_label VARCHAR(120) DEFAULT NULL,
+			issued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY (user_id, device_fingerprint),
+			KEY idx_user_active_sessions_token (session_token),
+			KEY idx_user_active_sessions_device (device_fingerprint)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+		SQL;
+		@mysqli_query($conn, $sql);
+		$columns = [];
+		$result = mysqli_query($conn, 'SHOW COLUMNS FROM user_active_sessions');
+		if ($result instanceof mysqli_result) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$field = $row['Field'] ?? '';
+				if ($field !== '') {
+					$columns[$field] = true;
+				}
+			}
+			mysqli_free_result($result);
+		}
+		if (!isset($columns['device_fingerprint'])) {
+			@mysqli_query($conn, "ALTER TABLE user_active_sessions ADD COLUMN device_fingerprint CHAR(64) NOT NULL DEFAULT '' AFTER session_token");
+		}
+		if (!isset($columns['device_label'])) {
+			@mysqli_query($conn, 'ALTER TABLE user_active_sessions ADD COLUMN device_label VARCHAR(120) DEFAULT NULL AFTER device_fingerprint');
+		}
+		$primaryColumns = [];
+		$primaryResult = mysqli_query($conn, "SHOW KEYS FROM user_active_sessions WHERE Key_name = 'PRIMARY'");
+		if ($primaryResult instanceof mysqli_result) {
+			while ($row = mysqli_fetch_assoc($primaryResult)) {
+				$seq = (int) ($row['Seq_in_index'] ?? 0);
+				$primaryColumns[$seq] = $row['Column_name'] ?? '';
+			}
+			mysqli_free_result($primaryResult);
+		}
+		ksort($primaryColumns);
+		$normalizedPk = array_values(array_filter($primaryColumns, static function ($column): bool {
+			return $column !== '';
+		}));
+		if ($normalizedPk !== ['user_id', 'device_fingerprint'] && isset($columns['device_fingerprint'])) {
+			@mysqli_query($conn, 'ALTER TABLE user_active_sessions DROP PRIMARY KEY');
+			@mysqli_query($conn, 'ALTER TABLE user_active_sessions ADD PRIMARY KEY (user_id, device_fingerprint)');
+		}
+		$deviceIndexExists = false;
+		$indexResult = mysqli_query($conn, 'SHOW INDEX FROM user_active_sessions');
+		if ($indexResult instanceof mysqli_result) {
+			while ($row = mysqli_fetch_assoc($indexResult)) {
+				if (($row['Key_name'] ?? '') === 'idx_user_active_sessions_device') {
+					$deviceIndexExists = true;
+					break;
+				}
+			}
+			mysqli_free_result($indexResult);
+		}
+		if (!$deviceIndexExists) {
+			@mysqli_query($conn, 'ALTER TABLE user_active_sessions ADD KEY idx_user_active_sessions_device (device_fingerprint)');
+		}
+		$ensured = true;
+	}
+}
+
+if (!function_exists('register_active_user_session')) {
+	function register_active_user_session(mysqli $conn, int $userId, string $token): void
+	{
+		if ($userId <= 0 || $token === '') {
+			return;
+		}
+		ensure_user_session_registry($conn);
+		$fingerprint = current_device_fingerprint();
+		if ($fingerprint === '') {
+			$fingerprint = derive_device_fingerprint();
+		}
+		$deviceLabel = summarize_device_label();
+		$evictStmt = mysqli_prepare($conn, 'DELETE FROM user_active_sessions WHERE device_fingerprint = ? AND user_id <> ?');
+		if ($evictStmt) {
+			mysqli_stmt_bind_param($evictStmt, 'si', $fingerprint, $userId);
+			mysqli_stmt_execute($evictStmt);
+			mysqli_stmt_close($evictStmt);
+		}
+		$sql = 'INSERT INTO user_active_sessions (user_id, device_fingerprint, session_token, device_label, issued_at, last_seen_at) VALUES (?, ?, ?, ?, NOW(), NOW()) ON DUPLICATE KEY UPDATE session_token = VALUES(session_token), issued_at = VALUES(issued_at), last_seen_at = VALUES(last_seen_at), device_label = VALUES(device_label)';
+		$stmt = mysqli_prepare($conn, $sql);
+		if ($stmt === false) {
+			return;
+		}
+		mysqli_stmt_bind_param($stmt, 'isss', $userId, $fingerprint, $token, $deviceLabel);
+		mysqli_stmt_execute($stmt);
+		mysqli_stmt_close($stmt);
+		$_SESSION['active_session_token'] = $token;
+		$_SESSION['device_fingerprint'] = $fingerprint;
+	}
+}
+
+if (!function_exists('touch_active_user_session')) {
+	function touch_active_user_session(mysqli $conn, int $userId, ?string $deviceFingerprint = null): void
+	{
+		if ($userId <= 0) {
+			return;
+		}
+		ensure_user_session_registry($conn);
+		$fingerprint = $deviceFingerprint ?? (isset($_SESSION['device_fingerprint']) ? (string) $_SESSION['device_fingerprint'] : '');
+		if ($fingerprint === '') {
+			$fingerprint = derive_device_fingerprint();
+		}
+		$stmt = mysqli_prepare($conn, 'UPDATE user_active_sessions SET last_seen_at = NOW() WHERE user_id = ? AND device_fingerprint = ?');
+		if ($stmt) {
+			mysqli_stmt_bind_param($stmt, 'is', $userId, $fingerprint);
+			mysqli_stmt_execute($stmt);
+			mysqli_stmt_close($stmt);
+		}
+	}
+}
+
+if (!function_exists('clear_active_user_session')) {
+	function clear_active_user_session(mysqli $conn, ?int $userId, ?string $deviceFingerprint = null): void
+	{
+		$normalizedId = (int) ($userId ?? 0);
+		if ($normalizedId <= 0) {
+			return;
+		}
+		ensure_user_session_registry($conn);
+		$fingerprint = $deviceFingerprint ?? (isset($_SESSION['device_fingerprint']) ? (string) $_SESSION['device_fingerprint'] : '');
+		if ($fingerprint !== '') {
+			$stmt = mysqli_prepare($conn, 'DELETE FROM user_active_sessions WHERE user_id = ? AND device_fingerprint = ?');
+			if ($stmt) {
+				mysqli_stmt_bind_param($stmt, 'is', $normalizedId, $fingerprint);
+				mysqli_stmt_execute($stmt);
+				mysqli_stmt_close($stmt);
+				return;
+			}
+		}
+		$stmt = mysqli_prepare($conn, 'DELETE FROM user_active_sessions WHERE user_id = ?');
+		if ($stmt) {
+			mysqli_stmt_bind_param($stmt, 'i', $normalizedId);
+			mysqli_stmt_execute($stmt);
+			mysqli_stmt_close($stmt);
+		}
+	}
+}
+
+if (!function_exists('purge_stale_active_sessions')) {
+	function purge_stale_active_sessions(mysqli $conn, int $maxAgeSeconds = 1800): void
+	{
+		$age = max(60, $maxAgeSeconds);
+		ensure_user_session_registry($conn);
+		$sql = 'DELETE FROM user_active_sessions WHERE last_seen_at < (NOW() - INTERVAL ' . (int) $age . ' SECOND)';
+		@mysqli_query($conn, $sql);
+	}
+}
+
+if (!function_exists('another_user_active_session_exists')) {
+	function another_user_active_session_exists(mysqli $conn, int $currentUserId = 0, int $activeWindowSeconds = 60): bool
+	{
+		purge_stale_active_sessions($conn);
+		ensure_user_session_registry($conn);
+		$window = max(10, min(900, $activeWindowSeconds));
+		$sql = 'SELECT user_id FROM user_active_sessions WHERE user_id <> ? AND last_seen_at >= (NOW() - INTERVAL ' . (int) $window . ' SECOND) LIMIT 1';
+		$stmt = mysqli_prepare($conn, $sql);
+		if ($stmt === false) {
+			return false;
+		}
+		mysqli_stmt_bind_param($stmt, 'i', $currentUserId);
+		mysqli_stmt_execute($stmt);
+		mysqli_stmt_store_result($stmt);
+		$hasOther = mysqli_stmt_num_rows($stmt) > 0;
+		mysqli_stmt_close($stmt);
+		return $hasOther;
+	}
+}
+
+if (!function_exists('enforce_single_active_session')) {
+	function enforce_single_active_session(mysqli $conn): void
+	{
+		if (!isset($_SESSION['user_id'])) {
+			return;
+		}
+		$userId = (int) $_SESSION['user_id'];
+		if ($userId <= 0) {
+			return;
+		}
+		purge_stale_active_sessions($conn);
+		$sessionToken = isset($_SESSION['active_session_token']) ? (string) $_SESSION['active_session_token'] : '';
+		if ($sessionToken === '') {
+			reset_session_state();
+			$_SESSION['auth_notice'] = 'Please sign in again to continue.';
+			header('Location: login.php');
+			exit;
+		}
+		$deviceFingerprint = current_device_fingerprint();
+		ensure_user_session_registry($conn);
+		$stmt = mysqli_prepare($conn, 'SELECT session_token FROM user_active_sessions WHERE user_id = ? AND device_fingerprint = ? LIMIT 1');
+		if ($stmt === false) {
+			return;
+		}
+		mysqli_stmt_bind_param($stmt, 'is', $userId, $deviceFingerprint);
+		mysqli_stmt_execute($stmt);
+		mysqli_stmt_bind_result($stmt, $dbToken);
+		$hasRow = mysqli_stmt_fetch($stmt);
+		mysqli_stmt_close($stmt);
+		if (!$hasRow) {
+			register_active_user_session($conn, $userId, $sessionToken);
+			return;
+		}
+		if (!hash_equals((string) $dbToken, $sessionToken)) {
+			reset_session_state();
+			$_SESSION['auth_notice'] = 'You were signed out because this account was accessed from another device.';
+			header('Location: login.php');
+			exit;
+		}
+		touch_active_user_session($conn, $userId, $deviceFingerprint);
 	}
 }
 
@@ -1047,8 +1797,8 @@ if (!function_exists('access_control_matrix')) {
 				'sensitive' => true,
 			],
 			'analytics.dashboard' => [
-				'roles' => ['admin'],
-				'sensitive' => true,
+				'roles' => ['manager', 'admin'],
+				'log_access' => true,
 			],
 		];
 		return $matrix;

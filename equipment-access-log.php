@@ -70,7 +70,7 @@ $auditError = null;
 $limit = 250;
 
 $sql = "SELECT
-		al.audit_log_id,
+		al.audit_id AS audit_log_id,
 		al.created_at,
 		al.action,
 		al.entity_id,

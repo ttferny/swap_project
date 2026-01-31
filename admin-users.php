@@ -13,87 +13,16 @@ $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Admin'));
 $logoutToken = generate_csrf_token('logout_form');
 $currentUserId = (int) ($currentUser['user_id'] ?? 0);
 
-if (!function_exists('sync_user_equipment_access')) {
-	function sync_user_equipment_access(mysqli $conn, int $userId, array $equipmentIds, int $grantedBy): bool
-	{
-		if ($userId <= 0) {
-			return false;
+$messages = ['success' => [], 'error' => []];
+$userFlash = flash_retrieve('admin_users');
+if (is_array($userFlash) && isset($userFlash['messages']) && is_array($userFlash['messages'])) {
+	foreach (['success', 'error'] as $type) {
+		if (isset($userFlash['messages'][$type]) && is_array($userFlash['messages'][$type])) {
+			$messages[$type] = $userFlash['messages'][$type];
 		}
-		if (!mysqli_begin_transaction($conn)) {
-			return false;
-		}
-
-		$deleteStmt = mysqli_prepare($conn, 'DELETE FROM user_equipment_access WHERE user_id = ?');
-		if ($deleteStmt === false) {
-			mysqli_rollback($conn);
-			return false;
-		}
-		mysqli_stmt_bind_param($deleteStmt, 'i', $userId);
-		if (!mysqli_stmt_execute($deleteStmt)) {
-			mysqli_stmt_close($deleteStmt);
-			mysqli_rollback($conn);
-			return false;
-		}
-		mysqli_stmt_close($deleteStmt);
-
-		if (!empty($equipmentIds)) {
-			$insertStmt = mysqli_prepare(
-				$conn,
-				'INSERT INTO user_equipment_access (user_id, equipment_id, granted_by) VALUES (?, ?, NULLIF(?, 0))
-				 ON DUPLICATE KEY UPDATE granted_at = CURRENT_TIMESTAMP, granted_by = VALUES(granted_by)'
-			);
-			if ($insertStmt === false) {
-				mysqli_rollback($conn);
-				return false;
-			}
-			$userParam = $userId;
-			$grantorParam = $grantedBy;
-			$equipmentParam = 0;
-			mysqli_stmt_bind_param($insertStmt, 'iii', $userParam, $equipmentParam, $grantorParam);
-			foreach ($equipmentIds as $equipmentId) {
-				$equipmentParam = (int) $equipmentId;
-				if ($equipmentParam <= 0) {
-					continue;
-				}
-				if (!mysqli_stmt_execute($insertStmt)) {
-					mysqli_stmt_close($insertStmt);
-					mysqli_rollback($conn);
-					return false;
-				}
-			}
-			mysqli_stmt_close($insertStmt);
-		}
-
-		if (!mysqli_commit($conn)) {
-			mysqli_rollback($conn);
-			return false;
-		}
-		return true;
 	}
 }
 
-$messages = ['success' => [], 'error' => []];
-
-$equipmentAccessTableSql = <<<SQL
-CREATE TABLE IF NOT EXISTS user_equipment_access (
-	user_id BIGINT(20) NOT NULL,
-	equipment_id BIGINT(20) NOT NULL,
-	granted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	granted_by BIGINT(20) DEFAULT NULL,
-	PRIMARY KEY (user_id, equipment_id),
-	KEY fk_uea_equipment (equipment_id),
-	KEY fk_uea_granted_by (granted_by),
-	CONSTRAINT fk_uea_equipment FOREIGN KEY (equipment_id) REFERENCES equipment (equipment_id) ON DELETE CASCADE ON UPDATE CASCADE,
-	CONSTRAINT fk_uea_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE ON UPDATE CASCADE,
-	CONSTRAINT fk_uea_granted_by FOREIGN KEY (granted_by) REFERENCES users (user_id) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-SQL;
-
-if (!mysqli_query($conn, $equipmentAccessTableSql)) {
-	$messages['error'][] = 'Equipment access permissions table is unavailable. Please contact system support.';
-}
-
-$equipmentList = [];
 $equipmentLookup = [];
 $equipmentResult = mysqli_query($conn, 'SELECT equipment_id, name, category, risk_level FROM equipment ORDER BY name ASC');
 if ($equipmentResult instanceof mysqli_result) {
@@ -108,12 +37,6 @@ if ($equipmentResult instanceof mysqli_result) {
 		}
 		$category = trim((string) ($row['category'] ?? ''));
 		$riskLevel = trim((string) ($row['risk_level'] ?? ''));
-		$equipmentList[] = [
-			'id' => $equipmentId,
-			'name' => $name,
-			'category' => $category,
-			'risk_level' => $riskLevel,
-		];
 		$equipmentLookup[$equipmentId] = [
 			'name' => $name,
 			'category' => $category,
@@ -122,20 +45,6 @@ if ($equipmentResult instanceof mysqli_result) {
 	}
 	mysqli_free_result($equipmentResult);
 }
-
-$normalizeEquipmentSelection = static function ($rawInput) use ($equipmentLookup): array {
-	$clean = [];
-	if (!is_array($rawInput)) {
-		return $clean;
-	}
-	foreach ($rawInput as $value) {
-		$equipmentId = (int) $value;
-		if ($equipmentId > 0 && isset($equipmentLookup[$equipmentId])) {
-			$clean[$equipmentId] = $equipmentId;
-		}
-	}
-	return array_values($clean);
-};
 
 $roles = [];
 $roleLookup = [];
@@ -176,7 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$fullName = trim((string) ($_POST['full_name'] ?? ''));
 			$roleId = isset($_POST['role_id']) ? (int) $_POST['role_id'] : 0;
 			$password = (string) ($_POST['password'] ?? '');
-			$selectedEquipment = $normalizeEquipmentSelection($_POST['equipment_access'] ?? []);
 
 			if ($adminNumber === '') {
 				$messages['error'][] = 'Admin number is required.';
@@ -218,14 +126,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					mysqli_stmt_bind_param($insertStmt, 'ssis', $adminNumber, $fullName, $roleId, $passwordHash);
 					if (mysqli_stmt_execute($insertStmt)) {
 						$newUserId = (int) mysqli_insert_id($conn);
-						$accessSynced = true;
-						if ($newUserId > 0 && !empty($selectedEquipment)) {
-							$accessSynced = sync_user_equipment_access($conn, $newUserId, $selectedEquipment, $currentUserId);
-						}
-						if ($accessSynced) {
-							$messages['success'][] = 'User account created successfully.';
+						if ($newUserId > 0) {
+							record_data_modification_audit(
+								$conn,
+								$currentUser,
+								'user',
+								$newUserId,
+								[
+									'action' => 'create',
+									'tp_admin_no' => $adminNumber,
+									'role_id' => $roleId,
+								]
+							);
 						} else {
-							$messages['error'][] = 'User created but equipment access permissions could not be saved.';
+							$messages['error'][] = 'Failed to save the new user account.';
+						}
+						if ($newUserId > 0) {
+							$messages['success'][] = 'User account created successfully.';
 						}
 					} else {
 						$messages['error'][] = 'Failed to save the new user account.';
@@ -244,7 +161,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$fullName = trim((string) ($_POST['full_name'] ?? ''));
 			$roleId = isset($_POST['role_id']) ? (int) $_POST['role_id'] : 0;
 			$newPassword = trim((string) ($_POST['password'] ?? ''));
-			$selectedEquipment = $normalizeEquipmentSelection($_POST['equipment_access'] ?? []);
 			$targetRow = null;
 			$targetIsAdmin = false;
 
@@ -330,11 +246,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				}
 
 				if ($accountUpdated) {
-					if (!sync_user_equipment_access($conn, $userId, $selectedEquipment, $currentUserId)) {
-						$messages['error'][] = 'Role updated, but equipment access permissions were not saved.';
-					} else {
-						$messages['success'][] = 'User account updated.';
-					}
+					$messages['success'][] = 'User account updated.';
+					record_data_modification_audit(
+						$conn,
+						$currentUser,
+						'user',
+						$userId,
+						[
+							'action' => 'update',
+							'tp_admin_no' => $adminNumber,
+							'role_id' => $roleId,
+							'password_rotated' => $newPassword !== '',
+						]
+					);
 				}
 			}
 		}
@@ -345,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$messages['error'][] = 'Unable to verify the delete request.';
 		} else {
 			$targetRow = null;
-			$targetStmt = mysqli_prepare($conn, 'SELECT role_id FROM users WHERE user_id = ? LIMIT 1');
+			$targetStmt = mysqli_prepare($conn, 'SELECT role_id, tp_admin_no FROM users WHERE user_id = ? LIMIT 1');
 			if ($targetStmt === false) {
 				$messages['error'][] = 'Unable to load that account right now.';
 			} else {
@@ -372,6 +296,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					mysqli_stmt_bind_param($deleteStmt, 'i', $userId);
 					if (mysqli_stmt_execute($deleteStmt) && mysqli_stmt_affected_rows($deleteStmt) === 1) {
 						$messages['success'][] = 'User account removed.';
+						record_data_modification_audit(
+							$conn,
+							$currentUser,
+							'user',
+							$userId,
+							[
+								'action' => 'delete',
+								'tp_admin_no' => trim((string) ($targetRow['tp_admin_no'] ?? '')),
+							]
+						);
 					} else {
 						$messages['error'][] = 'No account was removed. It may have already been deleted.';
 					}
@@ -380,6 +314,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			}
 		}
 	}
+
+	flash_store('admin_users', ['messages' => $messages]);
+	redirect_to_current_uri('admin-users.php');
 }
 
 $users = [];
@@ -395,23 +332,6 @@ if ($usersResult instanceof mysqli_result) {
 		$users[] = $row;
 	}
 	mysqli_free_result($usersResult);
-}
-
-$userEquipmentMap = [];
-$accessResult = mysqli_query($conn, 'SELECT user_id, equipment_id FROM user_equipment_access');
-if ($accessResult instanceof mysqli_result) {
-	while ($row = mysqli_fetch_assoc($accessResult)) {
-		$userId = isset($row['user_id']) ? (int) $row['user_id'] : 0;
-		$equipmentId = isset($row['equipment_id']) ? (int) $row['equipment_id'] : 0;
-		if ($userId <= 0 || $equipmentId <= 0) {
-			continue;
-		}
-		if (!isset($userEquipmentMap[$userId])) {
-			$userEquipmentMap[$userId] = [];
-		}
-		$userEquipmentMap[$userId][$equipmentId] = true;
-	}
-	mysqli_free_result($accessResult);
 }
 
 $createToken = generate_csrf_token('admin_user_create');
@@ -524,50 +444,6 @@ $createToken = generate_csrf_token('admin_user_create');
 			.muted-text {
 				color: var(--muted);
 				font-size: 0.9rem;
-			}
-
-			.equipment-selector {
-				margin-top: 1.25rem;
-				border: 1px solid var(--border);
-				border-radius: 1rem;
-				padding: 1rem;
-				background: #f8fafc;
-			}
-
-			.selector-heading {
-				margin: 0;
-				font-size: 0.95rem;
-				font-weight: 600;
-			}
-
-			.selector-note {
-				margin: 0.2rem 0 0.9rem;
-				color: var(--muted);
-				font-size: 0.85rem;
-			}
-
-			.equipment-grid {
-				display: grid;
-				grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-				gap: 0.65rem;
-			}
-
-			.equipment-option {
-				display: flex;
-				flex-direction: row;
-				align-items: flex-start;
-				gap: 0.6rem;
-				padding: 0.55rem 0.65rem;
-				border-radius: 0.85rem;
-				border: 1px solid rgba(67, 97, 238, 0.2);
-				background: rgba(67, 97, 238, 0.05);
-				font-weight: 600;
-				color: var(--text);
-			}
-
-			.equipment-option input {
-				margin-top: 0.35rem;
-				flex-shrink: 0;
 			}
 
 			.equip-meta {
@@ -743,31 +619,7 @@ $createToken = generate_csrf_token('admin_user_create');
 							Temporary Password
 							<input type="password" name="password" required />
 						</label>
-						<?php if (!empty($equipmentList)): ?>
-							<div class="equipment-selector">
-								<p class="selector-heading">Equipment Access (optional)</p>
-								<p class="selector-note">Select the machines or spaces this user can book or operate.</p>
-								<div class="equipment-grid">
-									<?php foreach ($equipmentList as $equipment): ?>
-										<?php $createEquipId = 'create-equip-' . (int) $equipment['id']; ?>
-										<label class="equipment-option" for="<?php echo htmlspecialchars($createEquipId, ENT_QUOTES); ?>">
-											<input type="checkbox" id="<?php echo htmlspecialchars($createEquipId, ENT_QUOTES); ?>" name="equipment_access[]" value="<?php echo (int) $equipment['id']; ?>" />
-											<div>
-												<strong><?php echo htmlspecialchars($equipment['name'], ENT_QUOTES); ?></strong>
-												<span class="equip-meta">
-													<?php echo htmlspecialchars($equipment['category'] !== '' ? $equipment['category'] : 'General access', ENT_QUOTES); ?>
-													<?php if (($equipment['risk_level'] ?? '') !== ''): ?>
-														&bull; <?php echo htmlspecialchars(ucfirst((string) $equipment['risk_level']), ENT_QUOTES); ?> risk
-													<?php endif; ?>
-												</span>
-											</div>
-										</label>
-									<?php endforeach; ?>
-								</div>
-							</div>
-						<?php else: ?>
-							<p class="muted-text">No equipment records available yet. Add equipment to assign access permissions.</p>
-						<?php endif; ?>
+						<p class="muted-text">Equipment access is unlocked automatically when the user completes the required certifications.</p>
 						<button type="submit" class="primary">Create User</button>
 					</form>
 				</div>
@@ -805,15 +657,17 @@ $createToken = generate_csrf_token('admin_user_create');
 								$deleteToken = generate_csrf_token('admin_user_delete_' . $userId);
 								$updateFormId = 'update-user-' . $userId;
 								$deleteFormId = 'delete-user-' . $userId;
-								$assignedEquipmentIds = array_keys($userEquipmentMap[$userId] ?? []);
-								$assignedNames = [];
-								foreach ($assignedEquipmentIds as $assignedEquipmentId) {
-									$assignedNames[] = $equipmentLookup[$assignedEquipmentId]['name'] ?? ('Equipment #' . $assignedEquipmentId);
+								$scopeLimited = should_limit_equipment_scope($conn, $userId);
+								$accessibleIds = $scopeLimited ? array_keys(get_user_equipment_access_map($conn, $userId)) : [];
+								$accessibleNames = [];
+								foreach ($accessibleIds as $accessibleEquipmentId) {
+									$accessibleNames[] = $equipmentLookup[$accessibleEquipmentId]['name'] ?? ('Equipment #' . $accessibleEquipmentId);
 								}
-								$assignedCount = count($assignedNames);
-								$summaryLabel = $assignedCount === 0 ? 'No assets assigned' : $assignedCount . ' asset' . ($assignedCount === 1 ? '' : 's');
-								$previewTags = array_slice($assignedNames, 0, 3);
-								$remainingTagCount = max(0, $assignedCount - count($previewTags));
+								$accessSummary = $scopeLimited
+									? (empty($accessibleNames) ? 'No equipment unlocked' : count($accessibleNames) . ' unlocked')
+									: 'Full access';
+								$previewTags = array_slice($accessibleNames, 0, 3);
+								$remainingTagCount = max(0, count($accessibleNames) - count($previewTags));
 								$rowRoleKey = $normalizeRoleLabel($user['role_name'] ?? '');
 								$rowIsAdmin = $rowRoleKey === 'admin';
 								$isSelfRow = $userId === $currentUserId;
@@ -848,54 +702,24 @@ $createToken = generate_csrf_token('admin_user_create');
 								</td>
 								<td data-label="Equipment Access">
 									<div class="access-manager">
-										<details>
-											<summary><?php echo htmlspecialchars($summaryLabel, ENT_QUOTES); ?></summary>
-											<?php if (!empty($equipmentList)): ?>
-												<div class="equipment-grid" style="margin-top: 0.8rem;">
-													<?php foreach ($equipmentList as $equipment): ?>
-														<?php
-															$eqId = (int) $equipment['id'];
-															$checkboxId = 'equip-' . $userId . '-' . $eqId;
-															$isChecked = isset($userEquipmentMap[$userId][$eqId]);
-														?>
-														<label class="equipment-option" for="<?php echo htmlspecialchars($checkboxId, ENT_QUOTES); ?>">
-															<input
-																type="checkbox"
-																id="<?php echo htmlspecialchars($checkboxId, ENT_QUOTES); ?>"
-																name="equipment_access[]"
-																form="<?php echo htmlspecialchars($updateFormId, ENT_QUOTES); ?>"
-																value="<?php echo $eqId; ?>"
-																<?php echo $isChecked ? 'checked' : ''; ?>
-																<?php echo $lockAdminRow ? 'disabled="disabled"' : ''; ?>
-															/>
-															<div>
-																<strong><?php echo htmlspecialchars($equipment['name'], ENT_QUOTES); ?></strong>
-																<span class="equip-meta">
-																	<?php echo htmlspecialchars($equipment['category'] !== '' ? $equipment['category'] : 'General access', ENT_QUOTES); ?>
-																	<?php if (($equipment['risk_level'] ?? '') !== ''): ?>
-																		&bull; <?php echo htmlspecialchars(ucfirst((string) $equipment['risk_level']), ENT_QUOTES); ?> risk
-																	<?php endif; ?>
-																</span>
-															</div>
-														</label>
-													<?php endforeach; ?>
-												</div>
-											<?php else: ?>
-												<p class="muted-text" style="margin-top: 0.6rem;">No equipment records available.</p>
-											<?php endif; ?>
-										</details>
-										<div class="equipment-taglist">
+										<p class="muted-text" style="margin: 0; font-weight: 600;">Access summary: <?php echo htmlspecialchars($accessSummary, ENT_QUOTES); ?></p>
+										<?php if ($scopeLimited): ?>
 											<?php if (empty($previewTags)): ?>
-												<span class="equipment-tag muted-tag">None assigned</span>
+												<p class="muted-text" style="margin: 0.5rem 0 0;">No equipment unlocked yet.</p>
 											<?php else: ?>
-												<?php foreach ($previewTags as $tagName): ?>
-													<span class="equipment-tag"><?php echo htmlspecialchars($tagName, ENT_QUOTES); ?></span>
-												<?php endforeach; ?>
-												<?php if ($remainingTagCount > 0): ?>
-													<span class="equipment-tag">+<?php echo $remainingTagCount; ?> more</span>
-												<?php endif; ?>
+												<div class="equipment-taglist" style="margin-top: 0.6rem;">
+													<?php foreach ($previewTags as $tagName): ?>
+														<span class="equipment-tag"><?php echo htmlspecialchars($tagName, ENT_QUOTES); ?></span>
+													<?php endforeach; ?>
+													<?php if ($remainingTagCount > 0): ?>
+														<span class="equipment-tag">+<?php echo $remainingTagCount; ?> more</span>
+													<?php endif; ?>
+												</div>
 											<?php endif; ?>
-										</div>
+											<p class="muted-text" style="margin: 0.5rem 0 0;">Equipment access follows the user's completed certifications.</p>
+										<?php else: ?>
+											<p class="muted-text" style="margin: 0.5rem 0 0;">Privileged role — full equipment catalogue available.</p>
+										<?php endif; ?>
 									</div>
 								</td>
 								<td data-label="Actions">

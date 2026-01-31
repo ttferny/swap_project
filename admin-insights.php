@@ -24,6 +24,39 @@ function format_datetime(?string $value): string
     return $dt->format('d M Y, H:i');
 }
 
+function summarize_audit_details(?string $jsonPayload): string
+{
+    if ($jsonPayload === null || trim($jsonPayload) === '') {
+        return '—';
+    }
+    $decoded = json_decode($jsonPayload, true);
+    if (!is_array($decoded) || empty($decoded)) {
+        return '—';
+    }
+    $segments = [];
+    foreach ($decoded as $key => $value) {
+        if (count($segments) >= 3) {
+            break;
+        }
+        if (is_array($value) || is_object($value)) {
+            $value = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        } elseif (is_bool($value)) {
+            $value = $value ? 'true' : 'false';
+        } elseif ($value === null) {
+            $value = 'null';
+        }
+        $segments[] = trim((string) $key) . ': ' . trim((string) $value);
+    }
+    $summary = implode('; ', $segments);
+    if ($summary === '') {
+        return '—';
+    }
+    if (function_exists('mb_strlen')) {
+        return mb_strlen($summary) > 140 ? mb_substr($summary, 0, 137) . '...' : $summary;
+    }
+    return strlen($summary) > 140 ? substr($summary, 0, 137) . '...' : $summary;
+}
+
 $bookingSummary = [
     'total' => 0,
     'approved' => 0,
@@ -127,6 +160,18 @@ if ($result = mysqli_query($conn, $maintenanceSql)) {
         $recentMaintenance[] = $row;
     }
     mysqli_free_result($result);
+}
+
+$auditTrail = [];
+$auditTrailSql = "SELECT al.audit_id, al.actor_user_id, al.action, al.entity_type, al.entity_id, al.ip_address, al.user_agent, al.details, al.created_at
+    FROM audit_logs al
+    ORDER BY al.created_at DESC
+    LIMIT 8";
+if ($result = mysqli_query($conn, $auditTrailSql)) {
+	while ($row = mysqli_fetch_assoc($result)) {
+		$auditTrail[] = $row;
+	}
+	mysqli_free_result($result);
 }
 
 ?>
@@ -503,6 +548,49 @@ if ($result = mysqli_query($conn, $maintenanceSql)) {
                                     <td data-label="Status" style="text-transform: capitalize;"><?php echo htmlspecialchars(str_replace('_', ' ', strtolower((string) $task['status'])), ENT_QUOTES); ?></td>
                                     <td data-label="Priority" style="text-transform: capitalize;"><?php echo htmlspecialchars(str_replace('_', ' ', strtolower((string) $task['priority'])), ENT_QUOTES); ?></td>
                                     <td data-label="Updated"><?php echo htmlspecialchars(format_datetime($task['updated_at']), ENT_QUOTES); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </section>
+
+            <section class="panel">
+                <h2>Recent Audit Activity</h2>
+                <p class="lede">Review the latest security and workflow events captured in the audit trail.</p>
+                <?php if (empty($auditTrail)): ?>
+                    <p class="lede">No audit events recorded yet.</p>
+                <?php else: ?>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Audit ID</th>
+                                <th>Actor User ID</th>
+                                <th>Action</th>
+                                <th>Entity Type</th>
+                                <th>Entity ID</th>
+                                <th>IP Address</th>
+                                <th>User Agent</th>
+                                <th>Details</th>
+                                <th>Created At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($auditTrail as $event): ?>
+                                <tr>
+                                    <td data-label="Audit ID">#<?php echo (int) ($event['audit_id'] ?? 0); ?></td>
+                                    <td data-label="Actor User ID"><?php echo $event['actor_user_id'] !== null ? (int) $event['actor_user_id'] : '—'; ?></td>
+                                    <td data-label="Action" style="text-transform: lowercase; letter-spacing: 0.04em;">
+                                        <?php echo htmlspecialchars((string) ($event['action'] ?? ''), ENT_QUOTES); ?>
+                                    </td>
+                                    <td data-label="Entity Type" style="text-transform: capitalize;">
+                                        <?php echo htmlspecialchars((string) ($event['entity_type'] ?? '—'), ENT_QUOTES); ?>
+                                    </td>
+                                    <td data-label="Entity ID"><?php echo $event['entity_id'] !== null ? (int) $event['entity_id'] : '—'; ?></td>
+                                    <td data-label="IP Address"><?php echo htmlspecialchars((string) ($event['ip_address'] ?? '—'), ENT_QUOTES); ?></td>
+                                    <td data-label="User Agent"><?php echo htmlspecialchars((string) ($event['user_agent'] ?? '—'), ENT_QUOTES); ?></td>
+                                    <td data-label="Details"><?php echo htmlspecialchars(summarize_audit_details($event['details'] ?? null), ENT_QUOTES); ?></td>
+                                    <td data-label="Created At"><?php echo htmlspecialchars(format_datetime($event['created_at'] ?? null), ENT_QUOTES); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

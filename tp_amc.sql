@@ -441,26 +441,6 @@ INSERT INTO `equipment_training_materials` (`equipment_id`, `material_id`, `link
 -- --------------------------------------------------------
 
 --
--- Table structure for table `user_equipment_access`
---
-
-CREATE TABLE `user_equipment_access` (
-  `user_id` bigint(20) NOT NULL,
-  `equipment_id` bigint(20) NOT NULL,
-  `granted_at` datetime NOT NULL DEFAULT current_timestamp(),
-  `granted_by` bigint(20) DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-
---
--- Dumping data for table `user_equipment_access`
---
-
--- No seed data for this table.
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `incidents`
 --
 
@@ -655,6 +635,21 @@ CREATE TABLE `users` (
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_active_sessions`
+--
+
+CREATE TABLE `user_active_sessions` (
+  `user_id` bigint(20) NOT NULL,
+  `session_token` char(64) NOT NULL,
+  `issued_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `last_seen_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`user_id`),
+  KEY `idx_user_active_sessions_token` (`session_token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 --
 -- Dumping data for table `users`
 --
@@ -786,14 +781,6 @@ ALTER TABLE `equipment_training_materials`
   ADD PRIMARY KEY (`equipment_id`,`material_id`),
   ADD KEY `fk_eq_train_material` (`material_id`),
   ADD KEY `fk_eq_train_linked_by` (`linked_by`);
-
---
--- Indexes for table `user_equipment_access`
---
-ALTER TABLE `user_equipment_access`
-  ADD PRIMARY KEY (`user_id`,`equipment_id`),
-  ADD KEY `fk_uea_equipment` (`equipment_id`),
-  ADD KEY `fk_uea_granted_by` (`granted_by`);
 
 --
 -- Indexes for table `incidents`
@@ -1007,15 +994,6 @@ ALTER TABLE `equipment_training_materials`
   ADD CONSTRAINT `fk_eq_train_linked_by` FOREIGN KEY (`linked_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_eq_train_material` FOREIGN KEY (`material_id`) REFERENCES `training_materials` (`material_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
---
--- Constraints for table `user_equipment_access`
---
-ALTER TABLE `user_equipment_access`
-  ADD CONSTRAINT `fk_uea_equipment` FOREIGN KEY (`equipment_id`) REFERENCES `equipment` (`equipment_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_uea_granted_by` FOREIGN KEY (`granted_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_uea_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
---
 -- Constraints for table `incidents`
 --
 ALTER TABLE `incidents`

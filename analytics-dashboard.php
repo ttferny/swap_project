@@ -25,6 +25,40 @@ $severityColors = [
 	'critical' => '#ef4444',
 ];
 
+$categoryLabels = [
+	'near_miss' => 'Near miss',
+	'injury' => 'Injury',
+	'hazard' => 'Hazard',
+	'damage' => 'Damage',
+	'security' => 'Security',
+	'other' => 'Other',
+];
+$categoryColors = [
+	'near_miss' => '#14b8a6',
+	'injury' => '#ef4444',
+	'hazard' => '#f59e0b',
+	'damage' => '#8b5cf6',
+	'security' => '#0ea5e9',
+	'other' => '#6b7280',
+];
+
+$downtimeThisMonth = [];
+$downtimeError = null;
+$breakdownCounts = [];
+$breakdownError = null;
+$incidentTopEquipment = [];
+$incidentTopCategories = [];
+$incidentAnalyticsError = null;
+$monthlySafetySummary = [
+	'total' => 0,
+	'bySeverity' => [],
+	'byCategory' => [],
+];
+$monthlySafetyReportText = '';
+
+$monthlySafetySummary['bySeverity'] = array_fill_keys(array_keys($severityLevels), 0);
+$monthlySafetySummary['byCategory'] = array_fill_keys(array_keys($categoryLabels), 0);
+
 $today = new DateTime('today');
 $currentYear = (int) $today->format('Y');
 $currentMonth = (int) $today->format('m');
@@ -92,7 +126,6 @@ if (empty($equipmentWeekly) && $bookingChartError === null) {
 		mysqli_free_result($equipmentResult);
 	}
 }
-
 $maxBookingCount = 0;
 foreach ($equipmentWeekly as $equipmentData) {
 	foreach ($equipmentData['counts'] as $count) {
@@ -113,6 +146,61 @@ $colorIndex = 0;
 foreach ($equipmentWeekly as $equipmentId => $equipmentData) {
 	$equipmentColors[$equipmentId] = $palette[$colorIndex % count($palette)];
 	$colorIndex++;
+}
+
+$monthStart = (clone $today)->modify('first day of this month')->format('Y-m-d 00:00:00');
+$monthEnd = (clone $today)->modify('last day of this month')->format('Y-m-d 23:59:59');
+
+$downtimeSql = "SELECT mr.equipment_id, e.name AS equipment_name, SUM(TIMESTAMPDIFF(MINUTE, COALESCE(mr.downtime_start, mr.created_at), COALESCE(mr.downtime_end, NOW()))) AS total_minutes
+	FROM maintenance_records mr
+	INNER JOIN equipment e ON e.equipment_id = mr.equipment_id
+	WHERE mr.downtime_start <= ? AND COALESCE(mr.downtime_end, NOW()) >= ?
+	GROUP BY mr.equipment_id, e.name
+	ORDER BY total_minutes DESC";
+
+$downtimeStmt = mysqli_prepare($conn, $downtimeSql);
+if ($downtimeStmt === false) {
+	$downtimeError = 'Unable to load downtime data right now.';
+} else {
+	mysqli_stmt_bind_param($downtimeStmt, 'ss', $monthEnd, $monthStart);
+	if (!mysqli_stmt_execute($downtimeStmt)) {
+		$downtimeError = 'Unable to load downtime data right now.';
+	} else {
+		$result = mysqli_stmt_get_result($downtimeStmt);
+		if ($result !== false) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$equipmentId = (int) ($row['equipment_id'] ?? 0);
+				$downtimeThisMonth[] = [
+					'equipment_id' => $equipmentId,
+					'name' => (string) ($row['equipment_name'] ?? 'Equipment'),
+					'minutes' => max(0, (int) ($row['total_minutes'] ?? 0)),
+				];
+			}
+			mysqli_free_result($result);
+		}
+	}
+	mysqli_stmt_close($downtimeStmt);
+}
+
+$breakdownSql = "SELECT mr.equipment_id, e.name AS equipment_name, COUNT(*) AS total_breakdowns
+	FROM maintenance_records mr
+	INNER JOIN equipment e ON e.equipment_id = mr.equipment_id
+	WHERE mr.downtime_start >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+	GROUP BY mr.equipment_id, e.name
+	ORDER BY total_breakdowns DESC";
+
+$breakdownResult = mysqli_query($conn, $breakdownSql);
+if ($breakdownResult === false) {
+	$breakdownError = 'Unable to load breakdown frequency right now.';
+} else {
+	while ($row = mysqli_fetch_assoc($breakdownResult)) {
+		$breakdownCounts[] = [
+			'equipment_id' => (int) ($row['equipment_id'] ?? 0),
+			'name' => (string) ($row['equipment_name'] ?? 'Equipment'),
+			'count' => (int) ($row['total_breakdowns'] ?? 0),
+		];
+	}
+	mysqli_free_result($breakdownResult);
 }
 
 $equipmentNames = [];
@@ -248,144 +336,154 @@ if (!empty($safetyBucketValues)) {
 	}
 }
 
-$maintenanceCostError = null;
-$maintenanceCostWindowDays = 90;
-$maintenanceCostRates = [
-	'high' => 260.0,
-	'medium' => 190.0,
-	'low' => 140.0,
-];
-$defaultCostRate = 170.0;
-$maintenanceCostStart = (clone $today);
-$maintenanceCostStart->modify('-' . ($maintenanceCostWindowDays - 1) . ' days');
-$maintenanceCostStart->setTime(0, 0, 0);
-$maintenanceCostSummary = [
-	'total_cost' => 0.0,
-	'total_hours' => 0.0,
-	'equipment' => [],
-];
-$maintenanceMonthsToShow = 4;
-$maintenanceMonthlyBuckets = [];
-$maintenanceMonthlyMax = 1;
+$incidentWindowStart = (clone $today)->modify('-6 months')->format('Y-m-d 00:00:00');
 
-$maintenanceMonthStart = (clone $today);
-$maintenanceMonthStart->modify('first day of this month');
-$maintenanceMonthStart->modify('-' . ($maintenanceMonthsToShow - 1) . ' months');
-for ($i = 0; $i < $maintenanceMonthsToShow; $i++) {
-	$bucketMonth = (clone $maintenanceMonthStart)->modify('+' . $i . ' months');
-	$monthKey = $bucketMonth->format('Y-m');
-	$maintenanceMonthlyBuckets[$monthKey] = [
-		'label' => $bucketMonth->format('M y'),
-		'cost' => 0.0,
-	];
-}
+$incidentEquipmentSql = "SELECT COALESCE(e.name, 'General area / none specified') AS equipment_name, COUNT(*) AS total
+	FROM incidents i
+	LEFT JOIN equipment e ON e.equipment_id = i.equipment_id
+	WHERE i.created_at >= ?
+	GROUP BY equipment_name
+	ORDER BY total DESC
+	LIMIT 5";
 
-$maintenanceSql = "SELECT
-		mr.record_id,
-		mr.equipment_id,
-		mr.downtime_start,
-		mr.downtime_end,
-		mr.created_at,
-		e.name AS equipment_name,
-		e.risk_level
-	FROM maintenance_records mr
-	LEFT JOIN equipment e ON e.equipment_id = mr.equipment_id
-	WHERE mr.created_at >= ?
-	ORDER BY COALESCE(mr.downtime_end, mr.created_at) DESC";
-
-$maintenanceStmt = mysqli_prepare($conn, $maintenanceSql);
-if ($maintenanceStmt === false) {
-	$maintenanceCostError = 'Unable to load maintenance cost data right now.';
+$incidentEquipmentStmt = mysqli_prepare($conn, $incidentEquipmentSql);
+if ($incidentEquipmentStmt === false) {
+	$incidentAnalyticsError = 'Unable to load incident hotspot data right now.';
 } else {
-	$maintenanceStartStr = $maintenanceCostStart->format('Y-m-d 00:00:00');
-	mysqli_stmt_bind_param($maintenanceStmt, 's', $maintenanceStartStr);
-	if (!mysqli_stmt_execute($maintenanceStmt)) {
-		$maintenanceCostError = 'Unable to load maintenance cost data right now.';
-	} else {
-		$result = mysqli_stmt_get_result($maintenanceStmt);
+	mysqli_stmt_bind_param($incidentEquipmentStmt, 's', $incidentWindowStart);
+	if (mysqli_stmt_execute($incidentEquipmentStmt)) {
+		$result = mysqli_stmt_get_result($incidentEquipmentStmt);
 		if ($result !== false) {
 			while ($row = mysqli_fetch_assoc($result)) {
-				$startRaw = $row['downtime_start'] ?? $row['created_at'] ?? null;
-				$endRaw = $row['downtime_end'] ?? $row['created_at'] ?? null;
-				if ($startRaw === null || $endRaw === null) {
-					continue;
-				}
-				try {
-					$startTime = new DateTime((string) $startRaw);
-					$endTime = new DateTime((string) $endRaw);
-				} catch (Exception $e) {
-					continue;
-				}
-				$durationSeconds = abs($endTime->getTimestamp() - $startTime->getTimestamp());
-				if ($durationSeconds === 0) {
-					$durationSeconds = 1800;
-				}
-				$durationHours = $durationSeconds / 3600;
-				$riskLevel = strtolower((string) ($row['risk_level'] ?? ''));
-				$rate = $maintenanceCostRates[$riskLevel] ?? $defaultCostRate;
-				$cost = $durationHours * $rate;
-				$maintenanceCostSummary['total_hours'] += $durationHours;
-				$maintenanceCostSummary['total_cost'] += $cost;
+				$name = trim((string) ($row['equipment_name'] ?? 'General area'));
+				$incidentTopEquipment[] = [
+					'name' => $name === '' ? 'General area / none specified' : $name,
+					'count' => (int) ($row['total'] ?? 0),
+				];
+			}
+			mysqli_free_result($result);
+		}
+	}
+	mysqli_stmt_close($incidentEquipmentStmt);
+}
 
-				$equipmentId = (int) ($row['equipment_id'] ?? 0);
-				$equipmentName = trim((string) ($row['equipment_name'] ?? ''));
-				if ($equipmentName === '') {
-					$equipmentName = $equipmentId > 0 ? 'Equipment #' . $equipmentId : 'Unassigned equipment';
-				}
-				if (!isset($maintenanceCostSummary['equipment'][$equipmentId])) {
-					$maintenanceCostSummary['equipment'][$equipmentId] = [
-						'name' => $equipmentName,
-						'hours' => 0.0,
-						'cost' => 0.0,
-					];
-				}
-				$maintenanceCostSummary['equipment'][$equipmentId]['hours'] += $durationHours;
-				$maintenanceCostSummary['equipment'][$equipmentId]['cost'] += $cost;
+$incidentCategorySql = 'SELECT category, COUNT(*) AS total FROM incidents WHERE created_at >= ? GROUP BY category ORDER BY total DESC';
+$incidentCategoryStmt = mysqli_prepare($conn, $incidentCategorySql);
+if ($incidentCategoryStmt === false) {
+	$incidentAnalyticsError = $incidentAnalyticsError ?? 'Unable to load incident trend data right now.';
+} else {
+	mysqli_stmt_bind_param($incidentCategoryStmt, 's', $incidentWindowStart);
+	if (mysqli_stmt_execute($incidentCategoryStmt)) {
+		$result = mysqli_stmt_get_result($incidentCategoryStmt);
+		if ($result !== false) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$key = strtolower((string) ($row['category'] ?? 'other'));
+				$incidentTopCategories[] = [
+					'key' => $key,
+					'label' => $categoryLabels[$key] ?? ucfirst($key),
+					'count' => (int) ($row['total'] ?? 0),
+				];
+			}
+			mysqli_free_result($result);
+		}
+	}
+	mysqli_stmt_close($incidentCategoryStmt);
+}
 
-				$bucketDate = $row['downtime_end'] ?? $row['created_at'] ?? $row['downtime_start'];
-				if ($bucketDate !== null) {
-					try {
-						$bucketDateTime = new DateTime((string) $bucketDate);
-						$monthKey = $bucketDateTime->format('Y-m');
-						if (isset($maintenanceMonthlyBuckets[$monthKey])) {
-							$maintenanceMonthlyBuckets[$monthKey]['cost'] += $cost;
-						}
-					} catch (Exception $e) {
-					}
+$monthlySeveritySql = 'SELECT severity, COUNT(*) AS total FROM incidents WHERE created_at BETWEEN ? AND ? GROUP BY severity';
+$monthlyCategorySql = 'SELECT category, COUNT(*) AS total FROM incidents WHERE created_at BETWEEN ? AND ? GROUP BY category';
+$monthlyEquipmentSql = "SELECT COALESCE(e.name, 'General area / none specified') AS equipment_name, COUNT(*) AS total
+	FROM incidents i
+	LEFT JOIN equipment e ON e.equipment_id = i.equipment_id
+	WHERE i.created_at BETWEEN ? AND ?
+	GROUP BY equipment_name
+	ORDER BY total DESC
+	LIMIT 3";
+
+$monthlyEquipment = [];
+
+$monthlySeverityStmt = mysqli_prepare($conn, $monthlySeveritySql);
+if ($monthlySeverityStmt) {
+	mysqli_stmt_bind_param($monthlySeverityStmt, 'ss', $monthStart, $monthEnd);
+	if (mysqli_stmt_execute($monthlySeverityStmt)) {
+		$result = mysqli_stmt_get_result($monthlySeverityStmt);
+		if ($result !== false) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$key = strtolower((string) ($row['severity'] ?? ''));
+				$count = (int) ($row['total'] ?? 0);
+				if (isset($monthlySafetySummary['bySeverity'][$key])) {
+					$monthlySafetySummary['bySeverity'][$key] += $count;
+					$monthlySafetySummary['total'] += $count;
 				}
 			}
 			mysqli_free_result($result);
 		}
 	}
-	mysqli_stmt_close($maintenanceStmt);
+	mysqli_stmt_close($monthlySeverityStmt);
 }
 
-$maintenanceMonthlyMax = 1;
-foreach ($maintenanceMonthlyBuckets as $monthKey => $bucket) {
-	if ($bucket['cost'] > $maintenanceMonthlyMax) {
-		$maintenanceMonthlyMax = $bucket['cost'];
+$monthlyCategoryStmt = mysqli_prepare($conn, $monthlyCategorySql);
+if ($monthlyCategoryStmt) {
+	mysqli_stmt_bind_param($monthlyCategoryStmt, 'ss', $monthStart, $monthEnd);
+	if (mysqli_stmt_execute($monthlyCategoryStmt)) {
+		$result = mysqli_stmt_get_result($monthlyCategoryStmt);
+		if ($result !== false) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$key = strtolower((string) ($row['category'] ?? ''));
+				$count = (int) ($row['total'] ?? 0);
+				if (isset($monthlySafetySummary['byCategory'][$key])) {
+					$monthlySafetySummary['byCategory'][$key] += $count;
+				}
+			}
+			mysqli_free_result($result);
+		}
+	}
+	mysqli_stmt_close($monthlyCategoryStmt);
+}
+
+$monthlyEquipmentStmt = mysqli_prepare($conn, $monthlyEquipmentSql);
+if ($monthlyEquipmentStmt) {
+	mysqli_stmt_bind_param($monthlyEquipmentStmt, 'ss', $monthStart, $monthEnd);
+	if (mysqli_stmt_execute($monthlyEquipmentStmt)) {
+		$result = mysqli_stmt_get_result($monthlyEquipmentStmt);
+		if ($result !== false) {
+			while ($row = mysqli_fetch_assoc($result)) {
+				$name = trim((string) ($row['equipment_name'] ?? 'General area / none specified'));
+				$monthlyEquipment[] = [
+					'name' => $name === '' ? 'General area / none specified' : $name,
+					'count' => (int) ($row['total'] ?? 0),
+				];
+			}
+			mysqli_free_result($result);
+		}
+	}
+	mysqli_stmt_close($monthlyEquipmentStmt);
+}
+
+$reportLines = [];
+$reportLines[] = 'Monthly Safety Report - ' . $today->format('F Y');
+$reportLines[] = 'Total incidents: ' . $monthlySafetySummary['total'];
+$severityParts = [];
+foreach ($severityLevels as $severityKey => $severityLabel) {
+	$severityParts[] = $severityLabel . ': ' . ($monthlySafetySummary['bySeverity'][$severityKey] ?? 0);
+}
+$reportLines[] = 'Severity mix: ' . implode(' | ', $severityParts);
+
+$categoryParts = [];
+foreach ($monthlySafetySummary['byCategory'] as $categoryKey => $count) {
+	if ($count > 0) {
+		$categoryParts[] = ($categoryLabels[$categoryKey] ?? ucfirst($categoryKey)) . ' (' . $count . ')';
 	}
 }
-if ($maintenanceMonthlyMax <= 0) {
-	$maintenanceMonthlyMax = 1;
-}
+$reportLines[] = 'Top categories: ' . (!empty($categoryParts) ? implode(', ', $categoryParts) : 'No incidents recorded.');
 
-$maintenanceCostDataAvailable = $maintenanceCostSummary['total_cost'] > 0 && $maintenanceCostSummary['total_hours'] > 0;
-$maintenanceCostTopEquipment = array_values($maintenanceCostSummary['equipment']);
-usort(
-	$maintenanceCostTopEquipment,
-	static function (array $a, array $b): int {
-		return $b['cost'] <=> $a['cost'];
-	}
-);
-$maintenanceCostTopEquipment = array_slice($maintenanceCostTopEquipment, 0, 3);
-
-$maintenanceCostWindowLabel = sprintf('%s – %s', $maintenanceCostStart->format('M j'), $today->format('M j'));
-$maintenanceCostNote = 'Downtime cost uses risk-weighted hourly multipliers (High $260/h, Medium $190/h, Low $140/h).';
-$maintenanceBucketValues = array_values($maintenanceMonthlyBuckets);
-if (empty($maintenanceBucketValues)) {
-	$maintenanceCostWindowLabel = 'Rolling 90-day window';
+$equipmentParts = [];
+foreach ($monthlyEquipment as $item) {
+	$equipmentParts[] = ($item['name'] ?? 'General area') . ' (' . ($item['count'] ?? 0) . ')';
 }
+$reportLines[] = 'Top equipment: ' . (!empty($equipmentParts) ? implode(', ', $equipmentParts) : 'No equipment-linked incidents this month.');
+$monthlySafetyReportText = implode("\r\n", $reportLines);
+
 ?>
 
 <html lang="en">
@@ -451,6 +549,54 @@ if (empty($maintenanceBucketValues)) {
 				display: flex;
 				align-items: center;
 				gap: 0.75rem;
+			}
+
+			.top-nav {
+				display: flex;
+				gap: 0.75rem;
+				align-items: center;
+				flex-wrap: wrap;
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+
+			.top-nav a {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.35rem;
+				padding: 0.45rem 0.85rem;
+				border-radius: 0.75rem;
+				background: #e2e8f0;
+				color: #0f172a;
+				font-weight: 600;
+				text-decoration: none;
+				transition: background 0.2s ease, color 0.2s ease;
+			}
+
+			.top-nav a:hover,
+			.top-nav a:focus-visible {
+				background: #cbd5e1;
+				outline: none;
+			}
+
+			.primary-button {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.45rem;
+				border: none;
+				border-radius: 0.75rem;
+				padding: 0.65rem 1rem;
+				background: var(--accent);
+				color: #fff;
+				font-weight: 600;
+				text-decoration: none;
+				transition: transform 0.2s ease, box-shadow 0.2s ease;
+			}
+
+			.primary-button:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 12px 24px rgba(16, 185, 129, 0.25);
 			}
 
 			.search-bar {
@@ -570,6 +716,8 @@ if (empty($maintenanceBucketValues)) {
 
 			main {
 				padding: clamp(2rem, 5vw, 4rem);
+				max-width: 1200px;
+				margin: 0 auto;
 			}
 
 			.intro {
@@ -580,6 +728,11 @@ if (empty($maintenanceBucketValues)) {
 			.intro p {
 				color: var(--muted);
 				line-height: 1.6;
+			}
+
+			.intro-actions {
+				display: flex;
+				margin-top: 0.75rem;
 			}
 
 			.grid {
@@ -606,6 +759,49 @@ if (empty($maintenanceBucketValues)) {
 				margin-bottom: 0;
 			}
 
+			.safety-report-block {
+				background: #f8faff;
+				border: 1px solid #e2e8f0;
+				border-radius: 0.85rem;
+				padding: 0.85rem 1rem;
+				font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+				white-space: pre-wrap;
+				color: #0f172a;
+			}
+
+			.report-note {
+				margin-top: 0.65rem;
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+
+			.metric-list {
+				list-style: none;
+				padding: 0;
+				margin: 0.25rem 0 0;
+				display: flex;
+				flex-direction: column;
+				gap: 0.35rem;
+			}
+
+			.metric-list li {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 0.4rem 0;
+				border-bottom: 1px solid #e2e8f0;
+				font-weight: 500;
+			}
+
+			.metric-list li:last-child {
+				border-bottom: none;
+			}
+
+			.metric-list span {
+				color: var(--muted);
+				font-weight: 600;
+			}
+
 			.chart-note {
 				margin-top: 0.75rem;
 				color: var(--muted);
@@ -624,6 +820,8 @@ if (empty($maintenanceBucketValues)) {
 				border-radius: 0.85rem;
 				border: 1px solid #e2e8f0;
 				position: relative;
+				max-width: 100%;
+				overflow-x: auto;
 			}
 
 			.chart-y-axis {
@@ -946,88 +1144,6 @@ if (empty($maintenanceBucketValues)) {
 				font-size: 0.9rem;
 			}
 
-			.cost-metrics {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 0.75rem;
-				margin-top: 1rem;
-			}
-
-			.cost-metric {
-				flex: 1 1 150px;
-				border: 1px solid #e2e8f0;
-				border-radius: 0.9rem;
-				padding: 0.85rem 1rem;
-				background: #f8faff;
-				box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.04);
-			}
-
-			.cost-metric strong {
-				display: block;
-				margin-top: 0.25rem;
-				font-size: 1.2rem;
-			}
-
-			.cost-list {
-				list-style: none;
-				padding: 0;
-				margin: 1rem 0 0;
-				display: flex;
-				flex-direction: column;
-				gap: 0.75rem;
-			}
-
-			.cost-row {
-				display: flex;
-				justify-content: space-between;
-				gap: 1rem;
-				align-items: flex-start;
-				padding-bottom: 0.35rem;
-				border-bottom: 1px dashed #e2e8f0;
-			}
-
-			.cost-row:last-child {
-				border-bottom: none;
-			}
-
-			.cost-value {
-				font-weight: 700;
-				color: var(--text);
-			}
-
-			.cost-chart {
-				margin-top: 1.25rem;
-				display: flex;
-				align-items: flex-end;
-				gap: 0.85rem;
-				height: 200px;
-				border: 1px solid #e2e8f0;
-				border-radius: 0.9rem;
-				padding: 1.1rem;
-				background: #f8faff;
-			}
-
-			.cost-bar {
-				flex: 1;
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				gap: 0.4rem;
-			}
-
-			.cost-bar-fill {
-				width: 100%;
-				border-radius: 0.75rem 0.75rem 0 0;
-				background: linear-gradient(180deg, #10b981, #0f766e);
-				min-height: 4px;
-			}
-
-			.cost-bar-label {
-				text-align: center;
-				font-size: 0.85rem;
-				color: var(--muted);
-			}
-
 			@media (max-width: 640px) {
 				.banner {
 					flex-direction: column;
@@ -1061,7 +1177,7 @@ if (empty($maintenanceBucketValues)) {
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 24 24"
 							role="img"
-							aria-hidden="true"
+							aria-label="Search icon"
 						>
 							<path
 								d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14zm0-2a9 9 0 1 0 5.9 15.7l4.2 4.2 1.4-1.4-4.2-4.2A9 9 0 0 0 11 2z"
@@ -1074,7 +1190,7 @@ if (empty($maintenanceBucketValues)) {
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 24 24"
 							role="img"
-							aria-hidden="true"
+							aria-label="Home icon"
 						>
 							<path d="M12 3 2 11h2v9h6v-6h4v6h6v-9h2L12 3z" />
 						</svg>
@@ -1084,7 +1200,7 @@ if (empty($maintenanceBucketValues)) {
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 24 24"
 							role="img"
-							aria-hidden="true"
+							aria-label="Notifications bell"
 						>
 							<path
 								d="M12 3a6 6 0 0 0-6 6v3.6l-1.6 2.7A1 1 0 0 0 5.3 17H18.7a1 1 0 0 0 .9-1.7L18 12.6V9a6 6 0 0 0-6-6zm0 19a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3z"
@@ -1097,7 +1213,7 @@ if (empty($maintenanceBucketValues)) {
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 24 24"
 								role="img"
-								aria-hidden="true"
+								aria-label="Profile icon"
 							>
 								<path
 									d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-3.3 0-9 1.7-9 5v2h18v-2c0-3.3-5.7-5-9-5z"
@@ -1116,11 +1232,23 @@ if (empty($maintenanceBucketValues)) {
 					</details>
 				</div>
 			</div>
+			<nav aria-label="Primary">
+				<ul class="top-nav">
+					<li><a href="analytics-dashboard.php" aria-current="page">Analytics</a></li>
+					<li><a href="technician.php">Maintenance</a></li>
+					<li><a href="book-machines.php">Booking</a></li>
+				</ul>
+			</nav>
 		</header>
 		<main>
 			<section class="intro" aria-labelledby="analytics-intro-title">
 				<h2 id="analytics-intro-title">Equipment Utilisation & Safety Trends</h2>
 				<p>Explore equipment utilisation patterns and safety trends across the AMC.</p>
+				<div class="intro-actions">
+					<a class="primary-button" href="report-fault.php" aria-label="Report a new safety incident">
+						Report a Safety Incident
+					</a>
+				</div>
 			</section>
 			<section class="grid" aria-label="Analytics highlights">
 				<article class="card">
@@ -1233,56 +1361,82 @@ if (empty($maintenanceBucketValues)) {
 					<?php endif; ?>
 				</article>
 				<article class="card">
-					<h3>Maintenance Cost Impact</h3>
-					<p>Estimated downtime cost built from recent maintenance records.</p>
-					<?php if ($maintenanceCostError !== null): ?>
-						<p class="chart-note"><?php echo htmlspecialchars($maintenanceCostError, ENT_QUOTES); ?></p>
-					<?php elseif (!$maintenanceCostDataAvailable): ?>
-						<p class="chart-note">No maintenance records have closed within the <?php echo htmlspecialchars((string) $maintenanceCostWindowDays, ENT_QUOTES); ?>-day window yet.</p>
+					<h3>Downtime This Month</h3>
+					<p>Minutes of downtime per machine (includes ongoing events).</p>
+					<?php if ($downtimeError !== null): ?>
+						<p class="chart-note"><?php echo htmlspecialchars($downtimeError, ENT_QUOTES); ?></p>
+					<?php elseif (empty($downtimeThisMonth)): ?>
+						<p class="chart-note">No downtime recorded so far this month.</p>
 					<?php else: ?>
-						<div class="cost-metrics">
-							<div class="cost-metric">
-								<span class="muted-label">Window</span>
-								<strong><?php echo htmlspecialchars($maintenanceCostWindowLabel, ENT_QUOTES); ?></strong>
-							</div>
-							<div class="cost-metric">
-								<span class="muted-label">Downtime hours</span>
-								<strong><?php echo htmlspecialchars(number_format($maintenanceCostSummary['total_hours'], 1), ENT_QUOTES); ?> h</strong>
-							</div>
-							<div class="cost-metric">
-								<span class="muted-label">Cost impact</span>
-								<strong>$<?php echo htmlspecialchars(number_format($maintenanceCostSummary['total_cost'], 0), ENT_QUOTES); ?></strong>
-							</div>
-						</div>
-						<ul class="cost-list" aria-label="Highest cost assets">
-							<?php foreach ($maintenanceCostTopEquipment as $equipmentRow): ?>
-								<li class="cost-row">
-									<div>
-										<strong><?php echo htmlspecialchars($equipmentRow['name'], ENT_QUOTES); ?></strong>
-										<span class="muted-label"><?php echo htmlspecialchars(number_format($equipmentRow['hours'], 1), ENT_QUOTES); ?> h downtime</span>
-									</div>
-									<div class="cost-value">$<?php echo htmlspecialchars(number_format($equipmentRow['cost'], 0), ENT_QUOTES); ?></div>
+						<ul class="metric-list">
+							<?php foreach ($downtimeThisMonth as $row): ?>
+								<li>
+									<strong><?php echo htmlspecialchars($row['name'], ENT_QUOTES); ?></strong>
+									<span><?php echo htmlspecialchars(number_format((float) $row['minutes']), ENT_QUOTES); ?> mins</span>
 								</li>
 							<?php endforeach; ?>
 						</ul>
-						<div class="cost-chart" role="img" aria-label="Maintenance cost trend by month">
-							<?php foreach ($maintenanceMonthlyBuckets as $bucket): ?>
-								<?php
-									$barHeight = $maintenanceMonthlyMax > 0
-										? max(2, ($bucket['cost'] / $maintenanceMonthlyMax) * 100)
-										: 0;
-								?>
-								<div class="cost-bar" title="<?php echo htmlspecialchars($bucket['label'] . ' · $' . number_format($bucket['cost'], 0), ENT_QUOTES); ?>">
-									<div class="cost-bar-fill" style="height: <?php echo htmlspecialchars((string) $barHeight, ENT_QUOTES); ?>%;"></div>
-									<div class="cost-bar-label">
-										<span><?php echo htmlspecialchars($bucket['label'], ENT_QUOTES); ?></span>
-										<strong>$<?php echo htmlspecialchars(number_format($bucket['cost'], 0), ENT_QUOTES); ?></strong>
-									</div>
-								</div>
-							<?php endforeach; ?>
-						</div>
-						<p class="chart-note"><?php echo htmlspecialchars($maintenanceCostNote, ENT_QUOTES); ?></p>
 					<?php endif; ?>
+				</article>
+				<article class="card">
+					<h3>Breakdown Frequency (6 mo)</h3>
+					<p>Most frequent breakdowns based on recorded downtime events.</p>
+					<?php if ($breakdownError !== null): ?>
+						<p class="chart-note"><?php echo htmlspecialchars($breakdownError, ENT_QUOTES); ?></p>
+					<?php elseif (empty($breakdownCounts)): ?>
+						<p class="chart-note">No breakdowns recorded in the last six months.</p>
+					<?php else: ?>
+						<ul class="metric-list">
+							<?php foreach ($breakdownCounts as $row): ?>
+								<li>
+									<strong><?php echo htmlspecialchars($row['name'], ENT_QUOTES); ?></strong>
+									<span><?php echo htmlspecialchars((string) $row['count'], ENT_QUOTES); ?> events</span>
+								</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+				</article>
+				<article class="card">
+					<h3>Incident Hotspots (6 mo)</h3>
+					<p>Machines or areas most frequently involved in incidents.</p>
+					<?php if ($incidentAnalyticsError !== null): ?>
+						<p class="chart-note"><?php echo htmlspecialchars($incidentAnalyticsError, ENT_QUOTES); ?></p>
+					<?php elseif (empty($incidentTopEquipment)): ?>
+						<p class="chart-note">No incident hotspots detected in the last six months.</p>
+					<?php else: ?>
+						<ul class="metric-list">
+							<?php foreach ($incidentTopEquipment as $row): ?>
+								<li>
+									<strong><?php echo htmlspecialchars($row['name'], ENT_QUOTES); ?></strong>
+									<span><?php echo htmlspecialchars((string) $row['count'], ENT_QUOTES); ?> incidents</span>
+								</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+				</article>
+				<article class="card">
+					<h3>Incident Types (6 mo)</h3>
+					<p>Most common incident categories across the AMC.</p>
+					<?php if ($incidentAnalyticsError !== null): ?>
+						<p class="chart-note"><?php echo htmlspecialchars($incidentAnalyticsError, ENT_QUOTES); ?></p>
+					<?php elseif (empty($incidentTopCategories)): ?>
+						<p class="chart-note">No incident categories recorded in the last six months.</p>
+					<?php else: ?>
+						<ul class="metric-list">
+							<?php foreach ($incidentTopCategories as $row): ?>
+								<li>
+									<strong><?php echo htmlspecialchars($row['label'], ENT_QUOTES); ?></strong>
+									<span><?php echo htmlspecialchars((string) $row['count'], ENT_QUOTES); ?> incidents</span>
+								</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+				</article>
+				<article class="card">
+					<h3>Monthly Safety Report</h3>
+					<p>Auto-generated summary for <?php echo htmlspecialchars($today->format('F Y'), ENT_QUOTES); ?>.</p>
+					<div class="safety-report-block" aria-label="Monthly safety report text"><?php echo htmlspecialchars($monthlySafetyReportText, ENT_QUOTES); ?></div>
+					<p class="report-note">Use this summary in monthly reviews to highlight trends and hotspots.</p>
 				</article>
 			</section>
 		</main>

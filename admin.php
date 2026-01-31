@@ -5,6 +5,7 @@ require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'admin.core');
+enforce_role_access(['admin'], $currentUser);
 $dashboardHref = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
@@ -251,25 +252,6 @@ $logoutToken = generate_csrf_token('logout_form');
 				margin-bottom: 0;
 			}
 
-			.back-link {
-				display: inline-flex;
-				align-items: center;
-				gap: 0.4rem;
-				margin-top: 2.5rem;
-				padding: 0.75rem 1.25rem;
-				border-radius: 999px;
-				background: var(--accent);
-				color: #fff;
-				text-decoration: none;
-				font-weight: 600;
-				transition: transform 0.2s ease, box-shadow 0.2s ease;
-			}
-
-			.back-link:hover {
-				transform: translateY(-2px);
-				box-shadow: 0 15px 35px rgba(67, 97, 238, 0.3);
-			}
-
 			@media (max-width: 640px) {
 				.banner {
 					flex-direction: column;
@@ -415,7 +397,6 @@ $logoutToken = generate_csrf_token('logout_form');
 			<div class="callout">
 				<strong>Full-system authority:</strong> You’re signed in as an administrator, so every module and configuration endpoint is available across the platform. Use this hub as your starting point and jump directly into any workspace above.
 			</div>
-			<a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">Return to your dashboard</a>
 		</main>
 	</body>
 </html>

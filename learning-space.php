@@ -6,6 +6,7 @@ require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'portal.learning');
 $dashboardHref = dashboard_home_path($currentUser);
+$historyFallback = $dashboardHref;
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Student';
@@ -19,8 +20,10 @@ $currentUserId = (int) ($currentUser['user_id'] ?? 0);
 $userEquipmentAccessMap = [];
 $limitEquipmentScope = false;
 if ($currentUserId > 0) {
-	$userEquipmentAccessMap = get_user_equipment_access_map($conn, $currentUserId);
-	$limitEquipmentScope = !empty($userEquipmentAccessMap);
+	$limitEquipmentScope = should_limit_equipment_scope($conn, $currentUserId);
+	if ($limitEquipmentScope) {
+		$userEquipmentAccessMap = get_user_equipment_access_map($conn, $currentUserId);
+	}
 }
 
 $materialActionMessage = null;
@@ -44,6 +47,24 @@ $materialStatusLabels = [
 	'pending' => 'Pending review',
 	'completed' => 'Completed',
 ];
+$certFlash = flash_retrieve('learning_space.cert');
+if (is_array($certFlash)) {
+	if (array_key_exists('message', $certFlash)) {
+		$certActionMessage = $certFlash['message'];
+	}
+	if (array_key_exists('error', $certFlash)) {
+		$certActionError = $certFlash['error'];
+	}
+}
+$materialFlash = flash_retrieve('learning_space.material');
+if (is_array($materialFlash)) {
+	if (array_key_exists('message', $materialFlash)) {
+		$materialActionMessage = $materialFlash['message'];
+	}
+	if (array_key_exists('error', $materialFlash)) {
+		$materialActionError = $materialFlash['error'];
+	}
+}
 
 if (!function_exists('ensure_training_material_schema')) {
 	function ensure_training_material_schema(mysqli $conn): void
@@ -252,6 +273,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cert_action'])) {
 			}
 		}
 	}
+
+	flash_store('learning_space.cert', [
+		'error' => $certActionError,
+		'message' => $certActionMessage,
+	]);
+	redirect_to_current_uri();
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['material_action'])) {
@@ -324,6 +351,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['material_action'])) {
 					mysqli_stmt_bind_param($deleteStmt, 'ii', $currentUserId, $materialId);
 					if (mysqli_stmt_execute($deleteStmt)) {
 						$materialActionMessage = 'Progress reset for this module.';
+						log_audit_event(
+							$conn,
+							$currentUserId,
+							'training_material_reset',
+							'training_material',
+							$materialId,
+							['action' => 'reset']
+						);
 					} else {
 						$materialActionError = 'Unable to update your progress right now.';
 					}
@@ -332,6 +367,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['material_action'])) {
 			}
 		}
 	}
+
+	flash_store('learning_space.material', [
+		'error' => $materialActionError,
+		'message' => $materialActionMessage,
+	]);
+	redirect_to_current_uri();
 }
 
 $equipment = [];
@@ -363,7 +404,7 @@ if ($equipmentResult === false) {
 }
 
 if ($limitEquipmentScope && $equipmentError === null && empty($equipment)) {
-	$equipmentError = 'No equipment has been assigned to your account yet. Please contact your administrator.';
+	$equipmentError = 'No equipment is currently unlocked by your certifications. Complete the required training or contact your administrator.';
 }
 
 $materialsByEquipment = [];
@@ -577,7 +618,7 @@ if ($certsResult === false) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -588,6 +629,7 @@ if ($certsResult === false) {
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<script src="assets/js/history-guard.js" defer></script>
 		<style>
 			:root {
 				--bg: #f8fbff;

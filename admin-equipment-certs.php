@@ -71,6 +71,14 @@ if (!function_exists('sync_equipment_requirements')) {
 }
 
 $messages = ['success' => [], 'error' => []];
+$certFlash = flash_retrieve('admin_equipment_certs');
+if (is_array($certFlash) && isset($certFlash['messages']) && is_array($certFlash['messages'])) {
+    foreach (['success', 'error'] as $type) {
+        if (isset($certFlash['messages'][$type]) && is_array($certFlash['messages'][$type])) {
+            $messages[$type] = $certFlash['messages'][$type];
+        }
+    }
+}
 
 $equipmentList = [];
 $equipmentLookup = [];
@@ -151,9 +159,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (sync_equipment_requirements($conn, $equipmentId, $selectedCerts)) {
                 $equipmentName = $equipmentLookup[$equipmentId]['name'] ?? ('Equipment #' . $equipmentId);
                 $messages['success'][] = 'Certification requirements updated for ' . $equipmentName . '.';
+                record_data_modification_audit(
+                    $conn,
+                    $currentUser,
+                    'equipment',
+                    $equipmentId,
+                    [
+                        'action' => 'requirements_sync',
+                        'certifications' => $selectedCerts,
+                    ]
+                );
             } else {
                 $messages['error'][] = 'Unable to save requirements for that equipment right now.';
             }
+
+            flash_store('admin_equipment_certs', ['messages' => $messages]);
+            redirect_to_current_uri('admin-equipment-certs.php');
         }
     }
 }

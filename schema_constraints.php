@@ -1,6 +1,14 @@
 <?php
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') {
+    $requestedScript = realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) ?: '';
+    if ($requestedScript !== '' && $requestedScript === realpath(__FILE__)) {
+        http_response_code(404);
+        exit;
+    }
+}
+
 if (!function_exists('ensure_core_database_constraints')) {
     function ensure_core_database_constraints(mysqli $conn): void
     {
@@ -27,7 +35,7 @@ if (!function_exists('ensure_core_database_constraints')) {
             ['bookings', 'fk_bookings_requester', 'FOREIGN KEY (requester_id) REFERENCES users (user_id) ON DELETE CASCADE'],
             ['booking_waitlist', 'fk_waitlist_equipment', 'FOREIGN KEY (equipment_id) REFERENCES equipment (equipment_id) ON DELETE CASCADE'],
             ['booking_waitlist', 'fk_waitlist_user', 'FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE'],
-            ['maintenance_tasks', 'fk_maintenance_equipment', 'FOREIGN KEY (equipment_id) REFERENCES equipment (equipment_id) ON DELETE CASCADE'],
+            ['maintenance_tasks', 'fk_maint_equipment', 'FOREIGN KEY (equipment_id) REFERENCES equipment (equipment_id) ON UPDATE CASCADE'],
         ];
         foreach ($foreignKeys as [$table, $name, $definition]) {
             ensure_foreign_key_constraint($conn, $databaseName, $table, $name, $definition);

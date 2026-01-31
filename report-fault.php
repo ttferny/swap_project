@@ -6,6 +6,7 @@ require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'portal.report_fault');
 $dashboardHref = dashboard_home_path($currentUser);
+$historyFallback = $dashboardHref;
 $currentUserId = isset($currentUser['user_id']) ? (int) $currentUser['user_id'] : 0;
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
@@ -20,50 +21,76 @@ $reportMessages = [
 $userEquipmentAccessMap = [];
 $limitEquipmentScope = false;
 if ($currentUserId > 0) {
-	$userEquipmentAccessMap = get_user_equipment_access_map($conn, $currentUserId);
-	$limitEquipmentScope = !empty($userEquipmentAccessMap);
+	$limitEquipmentScope = should_limit_equipment_scope($conn, $currentUserId);
+	if ($limitEquipmentScope) {
+		$userEquipmentAccessMap = get_user_equipment_access_map($conn, $currentUserId);
+	}
 }
-
 $formValues = [
-	'equipment_id' => 'general',
+	'equipment_id' => '',
 	'severity' => 'low',
 	'category' => 'other',
 	'location' => '',
 	'description' => '',
 ];
 
+$savedFormState = flash_retrieve('report_fault.form');
+if (is_array($savedFormState)) {
+	$formValues = array_merge($formValues, array_intersect_key($savedFormState, $formValues));
+}
+$savedMessages = flash_retrieve('report_fault.messages');
+if (is_array($savedMessages)) {
+	foreach (['success', 'error'] as $type) {
+		if (isset($savedMessages[$type]) && is_array($savedMessages[$type])) {
+			$reportMessages[$type] = $savedMessages[$type];
+		}
+	}
+}
+
 $equipment = [];
 $equipmentById = [];
 $equipmentError = null;
-$equipmentResult = mysqli_query($conn, 'SELECT equipment_id, name, location FROM equipment ORDER BY name ASC');
-if ($equipmentResult === false) {
-	$equipmentError = 'Unable to load equipment right now.';
+$cachedEquipment = static_cache_remember('equipment.list.v1', 300, function () use ($conn) {
+	$data = [];
+	$result = mysqli_query($conn, 'SELECT equipment_id, name, location FROM equipment ORDER BY name ASC');
+	if ($result === false) {
+		return ['error' => 'Unable to load equipment right now.', 'rows' => []];
+	}
+	while ($row = mysqli_fetch_assoc($result)) {
+		$data[] = $row;
+	}
+	mysqli_free_result($result);
+	return ['error' => null, 'rows' => $data];
+});
+
+if (isset($cachedEquipment['error']) && $cachedEquipment['error'] !== null) {
+	$equipmentError = $cachedEquipment['error'];
 } else {
-	while ($row = mysqli_fetch_assoc($equipmentResult)) {
+	foreach ($cachedEquipment['rows'] as $row) {
 		$equipmentId = (int) ($row['equipment_id'] ?? 0);
 		if ($equipmentId <= 0) {
 			continue;
 		}
-		if ($limitEquipmentScope && !isset($userEquipmentAccessMap[$equipmentId])) {
-			continue;
-		}
 		$name = trim((string) ($row['name'] ?? ''));
 		$location = trim((string) ($row['location'] ?? ''));
+		$isUnlocked = !$limitEquipmentScope || isset($userEquipmentAccessMap[$equipmentId]);
+		$displayName = $name === '' ? 'Unnamed equipment' : $name;
 		$equipment[] = [
 			'equipment_id' => $equipmentId,
-			'name' => $name === '' ? 'Unnamed equipment' : $name,
+			'name' => $displayName,
 			'location' => $location,
+			'is_unlocked' => $isUnlocked,
 		];
 		$equipmentById[$equipmentId] = [
-			'name' => $name === '' ? 'Unnamed equipment' : $name,
+			'name' => $displayName,
 			'location' => $location,
+			'is_unlocked' => $isUnlocked,
 		];
 	}
-	mysqli_free_result($equipmentResult);
 }
-
-if ($limitEquipmentScope && $equipmentError === null && empty($equipment)) {
-	$equipmentError = 'No machines are currently assigned to your account. You can still submit a general area report.';
+ 
+if ($equipmentError === null && empty($equipment)) {
+	$equipmentError = 'No machines are currently available to report yet.';
 }
 
 $severityOptions = ['low' => 'Low', 'medium' => 'Medium', 'high' => 'High', 'critical' => 'Critical'];
@@ -116,9 +143,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 		if ($equipmentIdValue <= 0 || !isset($equipmentById[$equipmentIdValue])) {
 			$reportMessages['error'][] = 'Select a valid machine.';
 		} else {
-			if ($limitEquipmentScope && !isset($userEquipmentAccessMap[$equipmentIdValue])) {
-				$reportMessages['error'][] = 'You are not authorized to report incidents for that machine.';
-			}
 			$resolvedLocation = (string) ($equipmentById[$equipmentIdValue]['name'] ?? '');
 		}
 	}
@@ -169,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 				);
 				$reportMessages['success'][] = 'Incident report submitted successfully.';
 				$formValues = [
-					'equipment_id' => 'general',
+					'equipment_id' => '',
 					'severity' => 'low',
 					'category' => 'other',
 					'location' => '',
@@ -183,12 +207,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['form_type']) && $_POS
 			$reportMessages['error'][] = 'Unable to submit your report right now.';
 		}
 	}
+
+	flash_store('report_fault.messages', $reportMessages);
+	flash_store('report_fault.form', $formValues);
+	redirect_to_current_uri('report-fault.php');
 }
 
 $csrfToken = generate_csrf_token('report_incident');
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -199,6 +227,7 @@ $csrfToken = generate_csrf_token('report_incident');
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<script src="assets/js/history-guard.js" defer></script>
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -406,6 +435,10 @@ $csrfToken = generate_csrf_token('report_incident');
 				gap: 0.85rem;
 			}
 
+			label {
+				display: block;
+			}
+
 			label span {
 				display: block;
 				font-size: 0.9rem;
@@ -422,12 +455,15 @@ $csrfToken = generate_csrf_token('report_incident');
 				border-radius: 0.6rem;
 				border: 1px solid #d7def0;
 				background-color: #fdfdff;
+				width: 100%;
 			}
 
 			textarea {
-				min-height: 140px;
+				min-height: clamp(140px, 22vh, 240px);
 				resize: vertical;
+				line-height: 1.5;
 			}
+
 
 			button.primary {
 				padding: 0.75rem 1rem;
@@ -590,12 +626,24 @@ $csrfToken = generate_csrf_token('report_incident');
 					<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES); ?>" />
 					<label>
 						<span>Machine</span>
-						<select name="equipment_id" required>
-							<option value="general" <?php echo $formValues['equipment_id'] === 'general' ? 'selected' : ''; ?>>Not applicable</option>
+						<select name="equipment_id" required data-equipment-select>
+							<option value="" disabled <?php echo $formValues['equipment_id'] === '' ? 'selected' : ''; ?>>Select machine or general area</option>
+							<option value="general" <?php echo $formValues['equipment_id'] === 'general' ? 'selected' : ''; ?>>General area / not listed</option>
 							<?php foreach ($equipment as $machine): ?>
-								<?php $machineIdValue = (string) $machine['equipment_id']; ?>
-								<option value="<?php echo htmlspecialchars($machineIdValue, ENT_QUOTES); ?>" <?php echo $formValues['equipment_id'] === $machineIdValue ? 'selected' : ''; ?>>
-									<?php echo htmlspecialchars($machine['name'], ENT_QUOTES); ?>
+								<?php
+									$machineIdValue = (string) $machine['equipment_id'];
+									$isUnlocked = (bool) ($machine['is_unlocked'] ?? true);
+									$optionLabel = (string) $machine['name'];
+									if (!$isUnlocked) {
+										$optionLabel .= ' (restricted)';
+									}
+								?>
+								<option
+									value="<?php echo htmlspecialchars($machineIdValue, ENT_QUOTES); ?>"
+									<?php echo $formValues['equipment_id'] === $machineIdValue ? 'selected' : ''; ?>
+									data-locked="<?php echo $isUnlocked ? '0' : '1'; ?>"
+								>
+									<?php echo htmlspecialchars($optionLabel, ENT_QUOTES); ?>
 								</option>
 							<?php endforeach; ?>
 						</select>
@@ -620,7 +668,11 @@ $csrfToken = generate_csrf_token('report_incident');
 							<?php endforeach; ?>
 						</select>
 					</label>
-					<label id="general-location-field" class="<?php echo $formValues['equipment_id'] === 'general' ? '' : 'is-hidden'; ?>" style="<?php echo $formValues['equipment_id'] === 'general' ? '' : 'display:none;'; ?>" <?php echo $formValues['equipment_id'] === 'general' ? '' : 'hidden'; ?>>
+					<label
+						id="general-location-field"
+						data-general-location
+						class="<?php echo $formValues['equipment_id'] === 'general' ? '' : 'is-hidden'; ?>"
+					>
 						<span>Location</span>
 						<input type="text" name="location" value="<?php echo htmlspecialchars($formValues['location'], ENT_QUOTES); ?>" placeholder="Room, lab, or area" />
 					</label>
@@ -633,26 +685,51 @@ $csrfToken = generate_csrf_token('report_incident');
 			</section>
 		</main>
 		<script nonce="<?php echo htmlspecialchars(get_csp_nonce(), ENT_QUOTES); ?>">
-			const equipmentSelect = document.querySelector('select[name="equipment_id"]');
-			const locationField = document.getElementById('general-location-field');
-			const locationInput = locationField ? locationField.querySelector('input[name="location"]') : null;
+			(function () {
+				function initGeneralLocationToggle() {
+					const equipmentSelect = document.querySelector('[data-equipment-select]');
+					const locationField = document.querySelector('[data-general-location]');
+					const locationInput = locationField ? locationField.querySelector('input[name="location"]') : null;
+					if (!equipmentSelect || !locationField || !locationInput) {
+						return;
+					}
 
-			function toggleLocationField() {
-				if (!equipmentSelect || !locationField || !locationInput) {
-					return;
+					function setHiddenState(isHidden) {
+						if (isHidden) {
+							locationField.classList.add('is-hidden');
+							locationField.hidden = true;
+							locationField.style.display = 'none';
+						} else {
+							locationField.classList.remove('is-hidden');
+							locationField.hidden = false;
+							locationField.style.removeProperty('display');
+						}
+					}
+
+					function applyLocationState(nextValue) {
+						const isGeneral = nextValue === 'general';
+						setHiddenState(!isGeneral);
+						locationInput.required = isGeneral;
+						locationInput.disabled = !isGeneral;
+						if (!isGeneral) {
+							locationInput.value = '';
+						} else if (document.activeElement !== locationInput) {
+							locationInput.focus();
+						}
+					}
+
+					applyLocationState(equipmentSelect.value);
+					equipmentSelect.addEventListener('change', function (event) {
+						applyLocationState(event.target.value);
+					});
 				}
-				const isGeneral = equipmentSelect.value === 'general';
-				locationField.classList.toggle('is-hidden', !isGeneral);
-				locationField.hidden = !isGeneral;
-				locationField.style.display = isGeneral ? '' : 'none';
-				locationInput.required = isGeneral;
-				locationInput.disabled = !isGeneral;
-			}
 
-			if (equipmentSelect) {
-				toggleLocationField();
-				equipmentSelect.addEventListener('change', toggleLocationField);
-			}
+				if (document.readyState === 'loading') {
+					document.addEventListener('DOMContentLoaded', initGeneralLocationToggle);
+				} else {
+					initGeneralLocationToggle();
+				}
+			})();
 		</script>
 	</body>
 </html>

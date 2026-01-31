@@ -5,6 +5,7 @@ require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'approvals.bookings');
+enforce_role_access(['admin', 'manager'], $currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
@@ -16,6 +17,15 @@ $decisionCsrfToken = '';
 $pageTitle = 'Approve Booking Requests';
 $decisionFeedback = '';
 $decisionFeedbackType = '';
+$decisionFlash = flash_retrieve('approve_bookings.decision');
+if (is_array($decisionFlash)) {
+	if (array_key_exists('message', $decisionFlash)) {
+		$decisionFeedback = $decisionFlash['message'];
+	}
+	if (array_key_exists('type', $decisionFlash)) {
+		$decisionFeedbackType = $decisionFlash['type'];
+	}
+}
 
 if (!function_exists('h')) {
 	function h($value): string
@@ -326,6 +336,12 @@ if (
 			}
 		}
 	}
+
+	flash_store('approve_bookings.decision', [
+		'message' => $decisionFeedback,
+		'type' => $decisionFeedbackType,
+	]);
+	redirect_to_current_uri('approve-bookings.php');
 }
 
 $decisionCsrfToken = generate_csrf_token('booking_decision_form');

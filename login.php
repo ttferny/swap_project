@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
+$historyFallback = dashboard_home_path();
 
 $adminNumber = '';
 $errors = [];
@@ -93,8 +94,21 @@ if (isset($_SESSION['auth_notice'])) {
 	unset($_SESSION['auth_notice']);
 }
 
+$loginFlash = flash_retrieve('login.form_state');
+if (is_array($loginFlash)) {
+	if (isset($loginFlash['errors']) && is_array($loginFlash['errors'])) {
+		$errors = $loginFlash['errors'];
+	}
+	if (isset($loginFlash['info']) && is_array($loginFlash['info'])) {
+		$infoMessages = array_merge($loginFlash['info'], $infoMessages);
+	}
+	if (isset($loginFlash['admin_number'])) {
+		$adminNumber = (string) $loginFlash['admin_number'];
+	}
+}
+
 $throttleKey = 'login_throttle';
-$maxAttempts = 3;
+$maxAttempts = 5;
 $lockSeconds = 300;
 $throttleState = $_SESSION[$throttleKey] ?? ['attempts' => 0, 'locked_until' => 0];
 
@@ -138,45 +152,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			mysqli_stmt_close($stmt);
 
 			if ($user && password_verify($password, (string) $user['password_hash'])) {
-				$loginSuccessful = true;
-				if (password_needs_rehash((string) $user['password_hash'], PASSWORD_DEFAULT)) {
-					$newHash = password_hash($password, PASSWORD_DEFAULT);
-					if ($newHash !== false) {
-						$rehashStmt = mysqli_prepare($conn, 'UPDATE users SET password_hash = ? WHERE user_id = ?');
-						if ($rehashStmt) {
-							mysqli_stmt_bind_param($rehashStmt, 'si', $newHash, $user['user_id']);
-							mysqli_stmt_execute($rehashStmt);
-							mysqli_stmt_close($rehashStmt);
+				$activeConflict = another_user_active_session_exists($conn, (int) $user['user_id']);
+				if ($activeConflict) {
+					$errors[] = 'Another user is currently signed in. Please log out the other session before logging in.';
+					$attemptedAuth = false;
+				} else {
+					$loginSuccessful = true;
+					if (password_needs_rehash((string) $user['password_hash'], PASSWORD_DEFAULT)) {
+						$newHash = password_hash($password, PASSWORD_DEFAULT);
+						if ($newHash !== false) {
+							$rehashStmt = mysqli_prepare($conn, 'UPDATE users SET password_hash = ? WHERE user_id = ?');
+							if ($rehashStmt) {
+								mysqli_stmt_bind_param($rehashStmt, 'si', $newHash, $user['user_id']);
+								mysqli_stmt_execute($rehashStmt);
+								mysqli_stmt_close($rehashStmt);
+							}
 						}
 					}
+
+					refresh_session_id(true);
+					$_SESSION['user_id'] = $user['user_id'];
+					$_SESSION['admin_number'] = $user['tp_admin_no'];
+					$_SESSION['role_id'] = $user['role_id'];
+					$_SESSION['role_name'] = $user['role_name'];
+					$_SESSION['full_name'] = $user['full_name'];
+					issue_user_jwt($user);
+					try {
+						$sessionToken = bin2hex(random_bytes(32));
+					} catch (Throwable $tokenError) {
+						try {
+							$sessionToken = bin2hex(random_bytes(16));
+						} catch (Throwable $fallbackError) {
+							$sessionToken = bin2hex((string) microtime(true));
+						}
+					}
+					register_active_user_session($conn, (int) $user['user_id'], $sessionToken);
+					unset($_SESSION[$throttleKey]);
+
+					$roleKey = strtolower(trim($user['role_name'] ?? ''));
+					$destination = $resolveDestination($roleKey, $redirectTarget);
+
+					$actorId = (int) $user['user_id'];
+					$entityId = $actorId;
+					$detailsPayload = [
+						'event' => 'login',
+						'admin_number' => $user['tp_admin_no'],
+						'role' => $user['role_name'],
+					];
+					log_audit_event($conn, $actorId, 'login', 'authentication', $entityId, $detailsPayload);
+
+					header('Location: ' . $destination);
+					exit;
 				}
-
-				refresh_session_id(true);
-				$_SESSION['user_id'] = $user['user_id'];
-				$_SESSION['admin_number'] = $user['tp_admin_no'];
-				$_SESSION['role_id'] = $user['role_id'];
-				$_SESSION['role_name'] = $user['role_name'];
-				$_SESSION['full_name'] = $user['full_name'];
-				issue_user_jwt($user);
-				unset($_SESSION[$throttleKey]);
-
-				$roleKey = strtolower(trim($user['role_name'] ?? ''));
-				$destination = $resolveDestination($roleKey, $redirectTarget);
-
-				$actorId = (int) $user['user_id'];
-				$entityId = $actorId;
-				$detailsPayload = [
-					'event' => 'login',
-					'admin_number' => $user['tp_admin_no'],
-					'role' => $user['role_name'],
-				];
-				log_audit_event($conn, $actorId, 'login', 'authentication', $entityId, $detailsPayload);
-
-				header('Location: ' . $destination);
-				exit;
+			} else {
+				$errors[] = 'Invalid admin number or password.';
 			}
-
-			$errors[] = 'Invalid admin number or password.';
 		}
 	}
 
@@ -205,12 +235,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			usleep(200000);
 		}
 	}
+
+	flash_store('login.form_state', [
+		'errors' => $errors,
+		'info' => $infoMessages,
+		'admin_number' => $adminNumber,
+	]);
+	redirect_to_current_uri('login.php');
 }
 
 $csrfToken = generate_csrf_token('login_form');
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -221,6 +258,7 @@ $csrfToken = generate_csrf_token('login_form');
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<script src="assets/js/history-guard.js" defer></script>
 		<style>
 			:root {
 				--bg: #f8fbff;

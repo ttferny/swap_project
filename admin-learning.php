@@ -7,6 +7,7 @@ require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'admin.core');
 $dashboardHref = dashboard_home_path($currentUser);
+$historyFallback = $dashboardHref;
 $currentUserId = (int) ($currentUser['user_id'] ?? 0);
 $userFullName = trim((string) ($currentUser['full_name'] ?? 'Administrator'));
 if ($userFullName === '') {
@@ -41,6 +42,19 @@ $defaultCreateDraft = [
     'equipment' => [],
 ];
 $createDraft = $defaultCreateDraft;
+$learningFlash = flash_retrieve('admin_learning');
+if (is_array($learningFlash)) {
+    if (isset($learningFlash['messages']) && is_array($learningFlash['messages'])) {
+        foreach (['success', 'error'] as $type) {
+            if (isset($learningFlash['messages'][$type]) && is_array($learningFlash['messages'][$type])) {
+                $messages[$type] = $learningFlash['messages'][$type];
+            }
+        }
+    }
+    if (isset($learningFlash['create_draft']) && is_array($learningFlash['create_draft'])) {
+        $createDraft = array_merge($createDraft, array_intersect_key($learningFlash['create_draft'], $createDraft));
+    }
+}
 
 if (!function_exists('ensure_training_material_schema')) {
     function ensure_training_material_schema(mysqli $conn): void
@@ -182,66 +196,10 @@ if (!function_exists('process_material_upload')) {
         if ($errorCode === UPLOAD_ERR_NO_FILE) {
             return $result;
         }
-        if ($errorCode !== UPLOAD_ERR_OK) {
-            $result['status'] = 'error';
-            $result['error'] = 'Upload failed (code ' . $errorCode . '). Please try again.';
-            return $result;
-        }
-        $size = (int) ($fileData['size'] ?? 0);
-        if ($size <= 0) {
-            $result['status'] = 'error';
-            $result['error'] = 'Uploaded file appears to be empty.';
-            return $result;
-        }
-        if ($size > $maxBytes) {
-            $result['status'] = 'error';
-            $result['error'] = 'File exceeds the ' . ceil($maxBytes / (1024 * 1024)) . ' MB limit.';
-            return $result;
-        }
-        if (!is_dir($uploadDirectory) && !mkdir($uploadDirectory, 0775, true)) {
-            $result['status'] = 'error';
-            $result['error'] = 'Unable to prepare the upload directory on the server.';
-            return $result;
-        }
-        if (!is_writable($uploadDirectory)) {
-            $result['status'] = 'error';
-            $result['error'] = 'Upload folder is not writable on the server.';
-            return $result;
-        }
-        $originalName = (string) ($fileData['name'] ?? 'training-material');
-        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        $baseName = pathinfo($originalName, PATHINFO_FILENAME);
-        $baseName = preg_replace('/[^A-Za-z0-9_-]+/', '_', $baseName);
-        if ($baseName === null || $baseName === '') {
-            $baseName = 'training_material';
-        }
-        try {
-            $suffix = bin2hex(random_bytes(4));
-        } catch (Exception $exception) {
-            $suffix = (string) mt_rand(1000, 9999);
-        }
-        $targetName = $baseName . '_' . $suffix;
-        if ($extension !== '') {
-            $targetName .= '.' . $extension;
-        }
-        $relativePath = 'uploads/' . $targetName;
-        $destination = rtrim($uploadDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $targetName;
-        $tmpName = (string) ($fileData['tmp_name'] ?? '');
-        if ($tmpName === '' || !is_uploaded_file($tmpName)) {
-            $result['status'] = 'error';
-            $result['error'] = 'Temporary upload missing. Please try again.';
-            return $result;
-        }
-        if (!move_uploaded_file($tmpName, $destination)) {
-            $result['status'] = 'error';
-            $result['error'] = 'Server could not save the uploaded file.';
-            return $result;
-        }
-        $fileHash = @hash_file('sha256', $destination) ?: null;
-        $result['status'] = 'stored';
-        $result['path'] = $relativePath;
-        $result['hash'] = $fileHash;
-        return $result;
+		// File uploads are disabled for this application; require external URLs instead.
+		$result['status'] = 'error';
+		$result['error'] = 'File uploads are disabled. Please provide a link to the material instead of uploading a file.';
+		return $result;
     }
 }
 
@@ -389,6 +347,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ]
                             );
                         }
+
+                        flash_store('admin_learning', [
+                            'messages' => $messages,
+                            'create_draft' => $createDraft,
+                        ]);
+                        redirect_to_current_uri('admin-learning.php');
                     }
                 }
             }
@@ -663,7 +627,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
 
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -674,6 +638,7 @@ $maxUploadMbLabel = (int) round($maxUploadBytes / (1024 * 1024));
             href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
             rel="stylesheet"
         />
+        <script src="assets/js/history-guard.js" defer></script>
         <style>
             :root {
                 --bg: #f8fbff;

@@ -60,7 +60,7 @@ function build_equipment_status_snapshot(mysqli $conn): array
 		)
 		: 'No equipment records were found.';
 
-	return [
+							aria-label="Search icon"
 		'rows' => $rows,
 		'counts' => $counts,
 		'message' => $message,
@@ -68,12 +68,12 @@ function build_equipment_status_snapshot(mysqli $conn): array
 	];
 }
 
-/**
+					<button class="icon-button" aria-label="Notifications">
  * Fetch the next few upcoming maintenance tasks for the dashboard schedule card.
  *
  * @return array{tasks: array<int, array<string, mixed>>, error: string|null}
  */
-function fetch_upcoming_maintenance_tasks(mysqli $conn): array
+							aria-label="Notifications bell"
 {
 	$tasks = [];
 	$error = null;
@@ -82,6 +82,13 @@ function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 			mt.task_id,
 			mt.title,
 			mt.description,
+			<nav aria-label="Primary">
+				<ul class="top-nav">
+					<li><a href="analytics-dashboard.php">Analytics</a></li>
+					<li><a href="technician.php" aria-current="page">Maintenance</a></li>
+					<li><a href="book-machines.php">Booking</a></li>
+				</ul>
+			</nav>
 			mt.task_type,
 			mt.priority,
 			mt.status,
@@ -134,8 +141,85 @@ function fetch_upcoming_maintenance_tasks(mysqli $conn): array
 	];
 }
 
+function open_downtime_record(mysqli $conn, int $equipmentId, int $actorUserId, string $status): void
+{
+	$openCheck = mysqli_prepare(
+		$conn,
+		' SELECT record_id FROM maintenance_records WHERE equipment_id = ? AND downtime_end IS NULL ORDER BY created_at DESC LIMIT 1 '
+	);
+	if ($openCheck !== false) {
+		mysqli_stmt_bind_param($openCheck, 'i', $equipmentId);
+		if (mysqli_stmt_execute($openCheck)) {
+			mysqli_stmt_store_result($openCheck);
+			if (mysqli_stmt_num_rows($openCheck) > 0) {
+				mysqli_stmt_close($openCheck);
+				return;
+			}
+		}
+		mysqli_stmt_close($openCheck);
+	}
+
+	$note = sprintf('Status set to %s by user %d', $status, $actorUserId);
+	$insertStmt = mysqli_prepare(
+		$conn,
+		'INSERT INTO maintenance_records (equipment_id, downtime_start, notes, logged_by) VALUES (?, NOW(), ?, ? )'
+	);
+	if ($insertStmt !== false) {
+		mysqli_stmt_bind_param($insertStmt, 'isi', $equipmentId, $note, $actorUserId);
+		mysqli_stmt_execute($insertStmt);
+		mysqli_stmt_close($insertStmt);
+	}
+}
+
+function close_downtime_record(mysqli $conn, int $equipmentId, int $actorUserId): void
+{
+	$updateStmt = mysqli_prepare(
+		$conn,
+		"UPDATE maintenance_records SET downtime_end = NOW(), notes = CASE WHEN notes IS NULL THEN CONCAT('Closed by user ', ?) ELSE CONCAT(notes, ' | Closed by user ', ?) END WHERE equipment_id = ? AND downtime_end IS NULL ORDER BY created_at DESC LIMIT 1"
+	);
+	if ($updateStmt !== false) {
+		mysqli_stmt_bind_param($updateStmt, 'isi', $actorUserId, $actorUserId, $equipmentId);
+		mysqli_stmt_execute($updateStmt);
+		mysqli_stmt_close($updateStmt);
+	}
+}
+
+function flag_bookings_for_downtime(mysqli $conn, int $equipmentId, string $status): void
+{
+	$reason = sprintf('Machine marked %s on %s', $status, date('Y-m-d H:i'));
+	$flagStmt = mysqli_prepare(
+		$conn,
+		"UPDATE bookings SET status = 'flagged', flag_reason = ? WHERE equipment_id = ? AND status IN ('pending','approved') AND end_time > NOW()"
+	);
+	if ($flagStmt !== false) {
+		mysqli_stmt_bind_param($flagStmt, 'si', $reason, $equipmentId);
+		mysqli_stmt_execute($flagStmt);
+		mysqli_stmt_close($flagStmt);
+	}
+}
+
+function handle_downtime_transition(mysqli $conn, int $equipmentId, string $previousStatus, string $newStatus, int $actorUserId): void
+{
+	$previousStatus = strtolower($previousStatus);
+	$newStatus = strtolower($newStatus);
+	$downStatuses = ['maintenance', 'faulty'];
+
+	if (in_array($newStatus, $downStatuses, true) && $previousStatus !== $newStatus) {
+		open_downtime_record($conn, $equipmentId, $actorUserId, $newStatus);
+		flag_bookings_for_downtime($conn, $equipmentId, $newStatus);
+	}
+
+	if ($previousStatus !== 'operational' && $newStatus === 'operational') {
+		close_downtime_record($conn, $equipmentId, $actorUserId);
+	}
+}
+
 $currentUser = enforce_capability($conn, 'technician.console');
+$currentRole = strtolower(trim((string) ($currentUser['role_name'] ?? '')));
+enforce_role_access(['technician', 'admin'], $currentUser);
+$canMaintain = in_array($currentRole, ['technician', 'admin'], true);
 $dashboardHref = dashboard_home_path($currentUser);
+$historyFallback = $dashboardHref;
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
@@ -164,11 +248,174 @@ $maintenanceTaskStatusMessages = [
 	'error' => [],
 ];
 $allowedEquipmentStatuses = ['operational', 'maintenance', 'faulty'];
+$allowedTaskTypes = ['corrective', 'preventive'];
+$allowedTaskPriorities = ['low', 'medium', 'high'];
+$newTaskFormDefaults = [
+	'equipment_id' => '',
+	'title' => '',
+	'description' => '',
+	'task_type' => 'corrective',
+	'priority' => 'medium',
+];
+$newTaskFormState = $newTaskFormDefaults;
+$newTaskError = null;
+$newTaskNotice = null;
 $lastUpdatedEquipmentId = null;
 $shouldLoadStatusSnapshot = true;
+$taskFlash = flash_retrieve('technician.tasks');
+if (is_array($taskFlash) && isset($taskFlash['messages']) && is_array($taskFlash['messages'])) {
+	foreach (['success', 'error'] as $type) {
+		if (isset($taskFlash['messages'][$type]) && is_array($taskFlash['messages'][$type])) {
+			$maintenanceTaskStatusMessages[$type] = $taskFlash['messages'][$type];
+		}
+	}
+}
+$statusFlash = flash_retrieve('technician.status');
+if (is_array($statusFlash)) {
+	if (array_key_exists('error', $statusFlash)) {
+		$maintenanceStatusError = (string) $statusFlash['error'];
+	}
+	if (array_key_exists('notice', $statusFlash)) {
+		$maintenanceStatusUpdateNotice = (string) $statusFlash['notice'];
+	}
+	if (array_key_exists('last_updated', $statusFlash)) {
+		$lastUpdatedEquipmentId = $statusFlash['last_updated'] === null ? null : (int) $statusFlash['last_updated'];
+	}
+}
+
+$requestFlash = flash_retrieve('technician.request');
+if (is_array($requestFlash)) {
+	if (array_key_exists('error', $requestFlash) && $requestFlash['error'] !== null) {
+		$newTaskError = (string) $requestFlash['error'];
+	}
+	if (array_key_exists('notice', $requestFlash) && $requestFlash['notice'] !== null) {
+		$newTaskNotice = (string) $requestFlash['notice'];
+	}
+	if (array_key_exists('form', $requestFlash) && is_array($requestFlash['form'])) {
+		$newTaskFormState = array_merge(
+			$newTaskFormState,
+			array_intersect_key($requestFlash['form'], $newTaskFormState)
+		);
+	}
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-	if (isset($_POST['maintenance_task_progress'])) {
+	if (!$canMaintain) {
+		$maintenanceStatusMessages['error'][] = 'You are not authorised to modify maintenance records.';
+		flash_store('technician.status', [
+			'messages' => $maintenanceStatusMessages,
+		]);
+		redirect_to_current_uri('technician.php');
+	}
+	if (isset($_POST['maintenance_task_request'])) {
+		$newTaskFormState = [
+			'equipment_id' => trim((string) ($_POST['equipment_id'] ?? '')),
+			'title' => trim((string) ($_POST['title'] ?? '')),
+			'description' => trim((string) ($_POST['description'] ?? '')),
+			'task_type' => strtolower(trim((string) ($_POST['task_type'] ?? ''))),
+			'priority' => strtolower(trim((string) ($_POST['priority'] ?? ''))),
+		];
+		$submittedToken = (string) ($_POST['csrf_token'] ?? '');
+		$validationErrors = [];
+		if (!validate_csrf_token('technician_task_request', $submittedToken)) {
+			$validationErrors[] = 'Session validation failed. Please refresh and try again.';
+		}
+		$equipmentId = (int) $newTaskFormState['equipment_id'];
+		if ($newTaskFormState['equipment_id'] === '' || $equipmentId <= 0) {
+			$validationErrors[] = 'Select the machine that needs maintenance.';
+		} else {
+			$equipmentStmt = mysqli_prepare($conn, 'SELECT equipment_id FROM equipment WHERE equipment_id = ? LIMIT 1');
+			if ($equipmentStmt === false) {
+				$validationErrors[] = 'Unable to validate the selected machine right now.';
+			} else {
+				mysqli_stmt_bind_param($equipmentStmt, 'i', $equipmentId);
+				if (!mysqli_stmt_execute($equipmentStmt)) {
+					$validationErrors[] = 'Unable to validate the selected machine right now.';
+				} else {
+					mysqli_stmt_store_result($equipmentStmt);
+					if (mysqli_stmt_num_rows($equipmentStmt) === 0) {
+						$validationErrors[] = 'Selected machine could not be found.';
+					}
+				}
+				mysqli_stmt_close($equipmentStmt);
+			}
+		}
+		$title = $newTaskFormState['title'];
+		if ($title === '') {
+			$validationErrors[] = 'Title is required.';
+		} elseif (mb_strlen($title) > 120) {
+			$validationErrors[] = 'Title must be 120 characters or fewer.';
+		}
+		$description = $newTaskFormState['description'];
+		if ($description === '') {
+			$validationErrors[] = 'Description is required.';
+		} elseif (mb_strlen($description) > 2000) {
+			$validationErrors[] = 'Description must be 2000 characters or fewer.';
+		}
+		if (!in_array($newTaskFormState['task_type'], $allowedTaskTypes, true)) {
+			$validationErrors[] = 'Choose a valid task type.';
+		}
+		if (!in_array($newTaskFormState['priority'], $allowedTaskPriorities, true)) {
+			$validationErrors[] = 'Choose a valid priority.';
+		}
+		if (empty($validationErrors)) {
+			$insertStmt = mysqli_prepare(
+				$conn,
+				"INSERT INTO maintenance_tasks (equipment_id, title, description, task_type, priority, status, manager_status, created_by)
+				VALUES (?, ?, ?, ?, ?, 'open', 'submitted', ?)"
+			);
+			if ($insertStmt === false) {
+				$validationErrors[] = 'Unable to submit your request right now.';
+			} else {
+				$creatorId = (int) ($currentUser['user_id'] ?? 0);
+				$titleParam = $title;
+				$descriptionParam = $description;
+				$taskTypeParam = $newTaskFormState['task_type'];
+				$priorityParam = $newTaskFormState['priority'];
+				mysqli_stmt_bind_param(
+					$insertStmt,
+					'issssi',
+					$equipmentId,
+					$titleParam,
+					$descriptionParam,
+					$taskTypeParam,
+					$priorityParam,
+					$creatorId
+				);
+				if (mysqli_stmt_execute($insertStmt)) {
+					$newTaskNotice = 'Maintenance request submitted for manager approval.';
+					$newTaskError = null;
+					$newTaskId = (int) mysqli_insert_id($conn);
+					log_audit_event(
+						$conn,
+						$creatorId,
+						'maintenance_task_submitted',
+						'maintenance_tasks',
+						$newTaskId,
+						[
+							'equipment_id' => $equipmentId,
+							'task_type' => $taskTypeParam,
+							'priority' => $priorityParam,
+						]
+					);
+					$newTaskFormState = $newTaskFormDefaults;
+				} else {
+					$validationErrors[] = 'Unable to submit your request right now.';
+				}
+				mysqli_stmt_close($insertStmt);
+			}
+		}
+		if (!empty($validationErrors)) {
+			$newTaskError = implode(' ', $validationErrors);
+			$newTaskNotice = null;
+		}
+		flash_store('technician.request', [
+			'error' => $newTaskError,
+			'notice' => $newTaskNotice,
+			'form' => $newTaskFormState,
+		]);
+		redirect_to_current_uri('technician.php');
+	} elseif (isset($_POST['maintenance_task_progress'])) {
 		$taskId = (int) ($_POST['task_id'] ?? 0);
 		$submittedToken = (string) ($_POST['csrf_token'] ?? '');
 		if ($taskId <= 0) {
@@ -186,12 +433,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				mysqli_stmt_bind_param($updateStmt, 'i', $taskId);
 				if (mysqli_stmt_execute($updateStmt) && mysqli_stmt_affected_rows($updateStmt) > 0) {
 					$maintenanceTaskStatusMessages['success'][] = 'Task marked as in progress.';
+					record_data_modification_audit(
+						$conn,
+						$currentUser,
+						'maintenance_task',
+						$taskId,
+						[
+							'action' => 'status_update',
+							'new_status' => 'in_progress',
+						]
+					);
 				} else {
 					$maintenanceTaskStatusMessages['error'][] = 'Task is already in progress or cannot be updated.';
 				}
 				mysqli_stmt_close($updateStmt);
 			}
 		}
+		flash_store('technician.tasks', ['messages' => $maintenanceTaskStatusMessages]);
+		redirect_to_current_uri('technician.php');
 	} elseif (isset($_POST['maintenance_task_cancel'])) {
 		$taskId = (int) ($_POST['task_id'] ?? 0);
 		$submittedToken = (string) ($_POST['csrf_token'] ?? '');
@@ -210,12 +469,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				mysqli_stmt_bind_param($updateStmt, 'i', $taskId);
 				if (mysqli_stmt_execute($updateStmt) && mysqli_stmt_affected_rows($updateStmt) > 0) {
 					$maintenanceTaskStatusMessages['success'][] = 'Task marked as cancelled.';
+					record_data_modification_audit(
+						$conn,
+						$currentUser,
+						'maintenance_task',
+						$taskId,
+						[
+							'action' => 'status_update',
+							'new_status' => 'cancelled',
+						]
+					);
 				} else {
 					$maintenanceTaskStatusMessages['error'][] = 'Task is already cancelled or cannot be updated.';
 				}
 				mysqli_stmt_close($updateStmt);
 			}
 		}
+		flash_store('technician.tasks', ['messages' => $maintenanceTaskStatusMessages]);
+		redirect_to_current_uri('technician.php');
 	} elseif (isset($_POST['maintenance_task_complete'])) {
 		$taskId = (int) ($_POST['task_id'] ?? 0);
 		$submittedToken = (string) ($_POST['csrf_token'] ?? '');
@@ -229,6 +500,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 			$currentStatus = '';
 			$scheduledFor = null;
 			$taskDescription = '';
+			$maintenanceRecordId = null;
 			mysqli_begin_transaction($conn);
 			try {
 				$taskStmt = mysqli_prepare(
@@ -287,15 +559,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 					mysqli_stmt_close($recordStmt);
 					throw new RuntimeException('Unable to log the maintenance record right now.');
 				}
+				$maintenanceRecordId = (int) mysqli_insert_id($conn);
 				mysqli_stmt_close($recordStmt);
 
 				mysqli_commit($conn);
 				$maintenanceTaskStatusMessages['success'][] = 'Task marked as complete and maintenance record logged.';
+				record_data_modification_audit(
+					$conn,
+					$currentUser,
+					'maintenance_task',
+					$taskId,
+					[
+						'action' => 'status_update',
+						'new_status' => 'done',
+					]
+				);
+				if ($maintenanceRecordId !== null) {
+					record_data_modification_audit(
+						$conn,
+						$currentUser,
+						'maintenance_record',
+						$maintenanceRecordId,
+						[
+							'equipment_id' => $equipmentIdValue,
+							'task_id' => $taskId,
+						]
+					);
+				}
 			} catch (Throwable $error) {
 				mysqli_rollback($conn);
 				$maintenanceTaskStatusMessages['error'][] = $error->getMessage();
 			}
 		}
+		flash_store('technician.tasks', ['messages' => $maintenanceTaskStatusMessages]);
+		redirect_to_current_uri('technician.php');
 	} elseif (isset($_POST['maintenance_status_update'])) {
 		$shouldLoadStatusSnapshot = true;
 		$equipmentId = (int) ($_POST['equipment_id'] ?? 0);
@@ -308,6 +605,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 		} elseif (!validate_csrf_token('equipment_status_' . $equipmentId, $submittedToken)) {
 			$maintenanceStatusError = 'Session validation failed. Please refresh and try again.';
 		} else {
+			$previousStatus = null;
+			$prevStmt = mysqli_prepare($conn, 'SELECT current_status FROM equipment WHERE equipment_id = ? LIMIT 1');
+			if ($prevStmt === false) {
+				$maintenanceStatusError = 'Unable to verify current equipment status.';
+			} else {
+				mysqli_stmt_bind_param($prevStmt, 'i', $equipmentId);
+				if (mysqli_stmt_execute($prevStmt)) {
+					mysqli_stmt_bind_result($prevStmt, $previousStatusValue);
+					if (mysqli_stmt_fetch($prevStmt)) {
+						$previousStatus = (string) $previousStatusValue;
+					}
+				} else {
+					$maintenanceStatusError = 'Unable to verify current equipment status.';
+				}
+				mysqli_stmt_close($prevStmt);
+			}
+
+			if ($maintenanceStatusError !== '') {
+				flash_store('technician.status', [
+					'error' => $maintenanceStatusError,
+					'notice' => $maintenanceStatusUpdateNotice,
+					'last_updated' => $lastUpdatedEquipmentId,
+				]);
+				redirect_to_current_uri('technician.php');
+			}
+
 			$updateStmt = mysqli_prepare(
 				$conn,
 				'UPDATE equipment SET current_status = ?, status_updated_at = NOW(), status_updated_by = ? WHERE equipment_id = ?'
@@ -323,6 +646,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				} else {
 					$lastUpdatedEquipmentId = $equipmentId;
 					if (mysqli_stmt_affected_rows($updateStmt) > 0) {
+						handle_downtime_transition($conn, $equipmentId, $previousStatus ?? '', $newStatus, (int) ($currentUser['user_id'] ?? 0));
 						log_audit_event(
 							$conn,
 							$actorUserId,
@@ -339,6 +663,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 				mysqli_stmt_close($updateStmt);
 			}
 		}
+		flash_store('technician.status', [
+			'error' => $maintenanceStatusError,
+			'notice' => $maintenanceStatusUpdateNotice,
+			'last_updated' => $lastUpdatedEquipmentId,
+		]);
+		redirect_to_current_uri('technician.php');
 	}
 }
 
@@ -453,7 +783,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -464,6 +794,7 @@ if ($selectedHistoryEquipmentRaw !== '') {
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<script src="assets/js/history-guard.js" defer></script>
 		<style>
 			:root {
 				--bg: #fffaf5;
@@ -519,6 +850,35 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				display: flex;
 				align-items: center;
 				gap: 0.75rem;
+			}
+
+			.top-nav {
+				display: flex;
+				gap: 0.75rem;
+				align-items: center;
+				flex-wrap: wrap;
+				margin: 0;
+				padding: 0;
+				list-style: none;
+			}
+
+			.top-nav a {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.35rem;
+				padding: 0.45rem 0.85rem;
+				border-radius: 0.75rem;
+				background: #e2e8f0;
+				color: #0f172a;
+				font-weight: 600;
+				text-decoration: none;
+				transition: background 0.2s ease, color 0.2s ease;
+			}
+
+			.top-nav a:hover,
+			.top-nav a:focus-visible {
+				background: #cbd5e1;
+				outline: none;
 			}
 
 			.search-bar {
@@ -638,6 +998,8 @@ if ($selectedHistoryEquipmentRaw !== '') {
 
 			main {
 				padding: clamp(2rem, 5vw, 4rem);
+				max-width: 1200px;
+				margin: 0 auto;
 			}
 
 			.intro {
@@ -831,12 +1193,13 @@ if ($selectedHistoryEquipmentRaw !== '') {
 			}
 
 			.status-badge.status-maintenance {
-				background: rgba(249, 115, 22, 0.15);
-				color: #c2410c;
+				background: #fef9c3;
+				color: #854d0e;
 			}
 
-			.status-badge.status-faulty {
-				background: rgba(248, 113, 113, 0.2);
+			.status-badge.status-faulty,
+			.status-badge.status-downtime {
+				background: #fee2e2;
 				color: #b91c1c;
 			}
 
@@ -1083,6 +1446,63 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				box-shadow: 0 14px 24px rgba(34, 197, 94, 0.25);
 			}
 
+			.request-form {
+				display: flex;
+				flex-direction: column;
+				gap: 0.75rem;
+				margin-top: 1rem;
+			}
+
+			.request-field {
+				display: flex;
+				flex-direction: column;
+				gap: 0.35rem;
+			}
+
+			.request-field label {
+				font-weight: 600;
+				font-size: 0.95rem;
+			}
+
+			.request-field input,
+			.request-field select,
+			.request-field textarea {
+				border-radius: 0.7rem;
+				border: 1px solid #fed7aa;
+				padding: 0.55rem 0.75rem;
+				font-family: inherit;
+				font-size: 0.95rem;
+				background: #fff;
+			}
+
+			.request-field textarea {
+				min-height: 120px;
+				resize: vertical;
+			}
+
+			.request-hint {
+				font-size: 0.85rem;
+				color: var(--muted);
+			}
+
+			.request-submit {
+				align-self: flex-start;
+				border: none;
+				border-radius: 0.85rem;
+				padding: 0.6rem 1.2rem;
+				font-size: 0.95rem;
+				font-weight: 600;
+				background: var(--accent);
+				color: #fff;
+				cursor: pointer;
+				transition: transform 0.2s ease, box-shadow 0.2s ease;
+			}
+
+			.request-submit:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 12px 22px rgba(249, 115, 22, 0.25);
+			}
+
 			.task-details__meta {
 				display: grid;
 				gap: 0.4rem;
@@ -1268,6 +1688,76 @@ if ($selectedHistoryEquipmentRaw !== '') {
 				</p>
 			</div>
 			<section class="grid">
+				<div class="card">
+					<h2>Request Maintenance Work</h2>
+					<p>Log machines that need attention so managers can schedule or approve the work.</p>
+					<?php if ($newTaskError !== null): ?>
+						<p class="status-error" role="alert"><?php echo htmlspecialchars($newTaskError, ENT_QUOTES); ?></p>
+					<?php endif; ?>
+					<?php if ($newTaskNotice !== null): ?>
+						<p class="status-success" role="status"><?php echo htmlspecialchars($newTaskNotice, ENT_QUOTES); ?></p>
+					<?php endif; ?>
+					<?php if ($maintenanceHistoryEquipmentError !== '' && empty($maintenanceHistoryEquipment)): ?>
+						<p class="status-error" role="alert"><?php echo htmlspecialchars($maintenanceHistoryEquipmentError, ENT_QUOTES); ?></p>
+					<?php elseif (empty($maintenanceHistoryEquipment)): ?>
+						<p class="task-empty">No equipment is available to request maintenance right now.</p>
+					<?php else: ?>
+						<form class="request-form" method="post" action="technician.php">
+							<input type="hidden" name="maintenance_task_request" value="1" />
+							<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generate_csrf_token('technician_task_request'), ENT_QUOTES); ?>" />
+							<div class="request-field">
+								<label for="request-equipment">Machine</label>
+								<select id="request-equipment" name="equipment_id" required>
+									<option value="">Select equipment</option>
+									<?php foreach ($maintenanceHistoryEquipment as $equipment): ?>
+										<?php $equipmentOptionId = (int) $equipment['equipment_id']; ?>
+										<option value="<?php echo $equipmentOptionId; ?>" <?php echo $newTaskFormState['equipment_id'] !== '' && (int) $newTaskFormState['equipment_id'] === $equipmentOptionId ? 'selected' : ''; ?>>
+											<?php echo htmlspecialchars($equipment['name'], ENT_QUOTES); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="request-field">
+								<label for="request-title">Title</label>
+								<input
+									type="text"
+									id="request-title"
+									name="title"
+									maxlength="120"
+									value="<?php echo htmlspecialchars($newTaskFormState['title'], ENT_QUOTES); ?>"
+									required
+								/>
+								<span class="request-hint">Summarise the maintenance activity to be performed.</span>
+							</div>
+							<div class="request-field">
+								<label for="request-description">Description</label>
+								<textarea id="request-description" name="description" maxlength="2000" required><?php echo htmlspecialchars($newTaskFormState['description'], ENT_QUOTES); ?></textarea>
+								<span class="request-hint">Include observed issues, risks, or details managers should review.</span>
+							</div>
+							<div class="request-field">
+								<label for="request-task-type">Task type</label>
+								<select id="request-task-type" name="task_type" required>
+									<?php foreach ($allowedTaskTypes as $taskTypeOption): ?>
+										<option value="<?php echo htmlspecialchars($taskTypeOption, ENT_QUOTES); ?>" <?php echo $newTaskFormState['task_type'] === $taskTypeOption ? 'selected' : ''; ?>>
+											<?php echo htmlspecialchars(ucfirst($taskTypeOption), ENT_QUOTES); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div class="request-field">
+								<label for="request-priority">Priority</label>
+								<select id="request-priority" name="priority" required>
+									<?php foreach ($allowedTaskPriorities as $priorityOption): ?>
+										<option value="<?php echo htmlspecialchars($priorityOption, ENT_QUOTES); ?>" <?php echo $newTaskFormState['priority'] === $priorityOption ? 'selected' : ''; ?>>
+											<?php echo htmlspecialchars(ucfirst($priorityOption), ENT_QUOTES); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<button type="submit" class="request-submit">Submit request</button>
+						</form>
+					<?php endif; ?>
+				</div>
 				<div class="card">
 					<h2>Maintenance Status</h2>
 					<p>Request the latest service windows, calibration holds, and safety notices.</p>
@@ -1483,7 +1973,6 @@ if ($selectedHistoryEquipmentRaw !== '') {
 					<?php endif; ?>
 				</div>
 			</section>
-			<a class="back-link" href="<?php echo htmlspecialchars($dashboardHref, ENT_QUOTES); ?>">Return to your dashboard</a>
 		</main>
 	</body>
 </html>

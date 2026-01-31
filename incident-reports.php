@@ -5,6 +5,7 @@ require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'incidents.review');
+enforce_role_access(['admin', 'manager'], $currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Manager';
@@ -13,11 +14,30 @@ $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
 $logoutToken = generate_csrf_token('logout_form');
 $assignToken = generate_csrf_token('assign_incident');
 $investigationToken = generate_csrf_token('update_investigation');
+$historyFallback = dashboard_home_path($currentUser);
 
 $assignmentError = null;
 $assignmentNotice = null;
 $investigationUpdateError = null;
 $investigationUpdateNotice = null;
+$assignmentFlash = flash_retrieve('incident_reports.assignment');
+if (is_array($assignmentFlash)) {
+	if (array_key_exists('error', $assignmentFlash)) {
+		$assignmentError = $assignmentFlash['error'];
+	}
+	if (array_key_exists('notice', $assignmentFlash)) {
+		$assignmentNotice = $assignmentFlash['notice'];
+	}
+}
+$investigationFlash = flash_retrieve('incident_reports.investigation');
+if (is_array($investigationFlash)) {
+	if (array_key_exists('error', $investigationFlash)) {
+		$investigationUpdateError = $investigationFlash['error'];
+	}
+	if (array_key_exists('notice', $investigationFlash)) {
+		$investigationUpdateNotice = $investigationFlash['notice'];
+	}
+}
 $staffMembers = [];
 $staffLookup = [];
 
@@ -49,6 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_incident'])) {
 		$assignmentError = 'Please select a valid staff member.';
 	} else {
 		$success = false;
+		$investigationId = null;
+		$assignmentMode = 'initial_assignment';
 		mysqli_begin_transaction($conn);
 		try {
 			$existingId = null;
@@ -62,18 +84,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_incident'])) {
 			}
 
 			if ($existingId) {
+				$assignmentMode = 'reassignment';
 				$updateStmt = mysqli_prepare($conn, 'UPDATE incident_investigations SET assigned_to = ?, updated_at = CURRENT_TIMESTAMP WHERE investigation_id = ?');
 				if ($updateStmt) {
 					mysqli_stmt_bind_param($updateStmt, 'ii', $assignedTo, $existingId);
 					$success = mysqli_stmt_execute($updateStmt);
 					mysqli_stmt_close($updateStmt);
 				}
+				$investigationId = (int) $existingId;
 			} else {
 				$insertStmt = mysqli_prepare($conn, 'INSERT INTO incident_investigations (incident_id, assigned_to) VALUES (?, ?)');
 				if ($insertStmt) {
 					mysqli_stmt_bind_param($insertStmt, 'ii', $incidentId, $assignedTo);
 					$success = mysqli_stmt_execute($insertStmt);
 					mysqli_stmt_close($insertStmt);
+				}
+				if ($success) {
+					$investigationId = (int) mysqli_insert_id($conn);
 				}
 			}
 
@@ -92,6 +119,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_incident'])) {
 				$assignmentNotice = $staffName !== ''
 					? 'Incident assigned to ' . $staffName . '.'
 					: 'Incident assigned successfully.';
+				if ($investigationId !== null) {
+					record_data_modification_audit(
+						$conn,
+						$currentUser,
+						'incident_investigation',
+						$investigationId,
+						[
+							'action' => 'assignment',
+							'assigned_to' => $assignedTo,
+							'mode' => $assignmentMode,
+						]
+					);
+				}
+				record_data_modification_audit(
+					$conn,
+					$currentUser,
+					'incident',
+					$incidentId,
+					[
+						'action' => 'assignment',
+						'assigned_to' => $assignedTo,
+					]
+				);
 			} else {
 				mysqli_rollback($conn);
 				$assignmentError = 'Unable to assign the incident right now.';
@@ -101,6 +151,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_incident'])) {
 			$assignmentError = 'Unable to assign the incident right now.';
 		}
 	}
+
+	flash_store('incident_reports.assignment', [
+		'error' => $assignmentError,
+		'notice' => $assignmentNotice,
+	]);
+	redirect_to_current_uri('incident-reports.php');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_investigation'])) {
@@ -159,6 +215,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_investigation'
 			if ($success) {
 				mysqli_commit($conn);
 				$investigationUpdateNotice = 'Investigation closed.';
+				record_data_modification_audit(
+					$conn,
+					$currentUser,
+					'incident_investigation',
+					$investigationId,
+					[
+						'action' => 'update',
+						'stage' => 'closure',
+					]
+				);
+				if ($incidentId !== null) {
+					record_data_modification_audit(
+						$conn,
+						$currentUser,
+						'incident',
+						$incidentId,
+						[
+							'action' => 'status_update',
+							'new_status' => 'closed',
+						]
+					);
+				}
 			} else {
 				mysqli_rollback($conn);
 				$investigationUpdateError = 'Unable to close the investigation right now.';
@@ -168,6 +246,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_investigation'
 			$investigationUpdateError = 'Unable to close the investigation right now.';
 		}
 	}
+
+	flash_store('incident_reports.investigation', [
+		'error' => $investigationUpdateError,
+		'notice' => $investigationUpdateNotice,
+	]);
+	redirect_to_current_uri('incident-reports.php');
 }
 
 $incidents = [];
@@ -175,6 +259,19 @@ $incidentsError = null;
 
 $investigations = [];
 $investigationsError = null;
+$closedInvestigations = [];
+$closedInvestigationsError = null;
+
+$statusCounts = [
+	'submitted' => 0,
+	'under_review' => 0,
+	'action_required' => 0,
+	'closed' => 0,
+];
+$totalIncidents = 0;
+$pendingTriageCount = 0;
+$inProgressCount = 0;
+$closedCount = 0;
 
 $incidentSql = 'SELECT i.incident_id, i.severity, i.category, i.location, i.description, i.status, i.created_at, i.updated_at,
 		u.full_name, u.tp_admin_no, r.role_name AS reporter_role,
@@ -198,6 +295,22 @@ if ($incidentResult === false) {
 	}
 	mysqli_free_result($incidentResult);
 }
+
+$statusResult = mysqli_query($conn, 'SELECT status, COUNT(*) AS total FROM incidents GROUP BY status');
+if ($statusResult !== false) {
+	while ($row = mysqli_fetch_assoc($statusResult)) {
+		$statusKey = strtolower(trim((string) ($row['status'] ?? '')));
+		$total = (int) ($row['total'] ?? 0);
+		if (isset($statusCounts[$statusKey])) {
+			$statusCounts[$statusKey] += $total;
+		}
+		$totalIncidents += $total;
+	}
+	mysqli_free_result($statusResult);
+}
+$pendingTriageCount = $statusCounts['submitted'];
+$inProgressCount = $statusCounts['under_review'] + $statusCounts['action_required'];
+$closedCount = $statusCounts['closed'];
 
 	$investigationSql = 'SELECT ii.investigation_id, ii.incident_id, ii.assigned_to, ii.findings, ii.actions_taken, ii.closed_at, ii.created_at, ii.updated_at,
 		i.severity, i.category, i.status, i.description AS incident_description, i.location,
@@ -223,6 +336,33 @@ if ($investigationResult === false) {
 		$investigations[] = $row;
 	}
 	mysqli_free_result($investigationResult);
+}
+
+$closedInvestigationSql = 'SELECT ii.investigation_id, ii.incident_id, ii.assigned_to, ii.findings, ii.actions_taken, ii.closed_at, ii.created_at, ii.updated_at,
+		i.severity, i.category, i.status, i.description AS incident_description, i.location,
+		e.name AS equipment_name, e.location AS equipment_location,
+		u.full_name AS assigned_name, r.role_name AS assigned_role
+	FROM incident_investigations ii
+	LEFT JOIN incidents i ON i.incident_id = ii.incident_id
+	LEFT JOIN equipment e ON e.equipment_id = i.equipment_id
+	LEFT JOIN users u ON u.user_id = ii.assigned_to
+	LEFT JOIN roles r ON r.role_id = u.role_id
+	WHERE ii.assigned_to IS NOT NULL AND ii.closed_at IS NOT NULL
+	ORDER BY ii.closed_at DESC
+	LIMIT 25';
+
+$closedInvestigationResult = mysqli_query($conn, $closedInvestigationSql);
+if ($closedInvestigationResult === false) {
+	$closedInvestigationsError = 'Unable to load closed investigations right now.';
+} else {
+	while ($row = mysqli_fetch_assoc($closedInvestigationResult)) {
+		$row['location'] = decrypt_sensitive_value($row['location'] ?? null);
+		$row['incident_description'] = decrypt_sensitive_value($row['incident_description'] ?? null);
+		$row['findings'] = decrypt_sensitive_value($row['findings'] ?? null);
+		$row['actions_taken'] = decrypt_sensitive_value($row['actions_taken'] ?? null);
+		$closedInvestigations[] = $row;
+	}
+	mysqli_free_result($closedInvestigationResult);
 }
 
 $severityLabels = [
@@ -266,7 +406,7 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -277,6 +417,7 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<script src="assets/js/history-guard.js" defer></script>
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -468,6 +609,53 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 
 			.card + .card {
 				margin-top: 2rem;
+			}
+
+			.summary-grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+				gap: 1rem;
+				margin-bottom: 1.75rem;
+			}
+
+			.summary-card {
+				background: var(--card);
+				border: 1px solid #e2e8f0;
+				border-radius: 1rem;
+				padding: 1rem 1.25rem;
+				box-shadow: 0 12px 25px rgba(16, 185, 129, 0.08);
+				display: grid;
+				gap: 0.35rem;
+			}
+
+			.summary-card h3 {
+				margin: 0;
+				font-size: 1rem;
+			}
+
+			.summary-card .stat-value {
+				font-size: 2rem;
+				font-weight: 700;
+			}
+
+			.summary-card .muted {
+				color: var(--muted);
+				font-size: 0.95rem;
+			}
+
+			.status-chip {
+				display: inline-flex;
+				align-items: center;
+				gap: 0.4rem;
+				font-size: 0.85rem;
+				color: var(--muted);
+			}
+
+			.status-dot {
+				width: 9px;
+				height: 9px;
+				border-radius: 50%;
+				background: #10b981;
 			}
 
 			.incident-list.scrollable,
@@ -841,6 +1029,28 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 				<h2 id="incident-intro-title">Safety Incidents and Investigations</h2>
 				<p>Review reported safety incidents, assign investigations, and document findings and follow-up actions for the AMC team.</p>
 			</section>
+			<section class="summary-grid" aria-label="Incident status summary">
+				<article class="summary-card" aria-label="Awaiting triage">
+					<h3>Awaiting Triage</h3>
+					<div class="stat-value"><?php echo htmlspecialchars((string) $pendingTriageCount, ENT_QUOTES); ?></div>
+					<span class="status-chip"><span class="status-dot"></span>Submitted and not yet assigned</span>
+				</article>
+				<article class="summary-card" aria-label="In investigation">
+					<h3>In Investigation</h3>
+					<div class="stat-value"><?php echo htmlspecialchars((string) $inProgressCount, ENT_QUOTES); ?></div>
+					<span class="status-chip"><span class="status-dot"></span>Under review or action required</span>
+				</article>
+				<article class="summary-card" aria-label="Closed investigations">
+					<h3>Closed</h3>
+					<div class="stat-value"><?php echo htmlspecialchars((string) $closedCount, ENT_QUOTES); ?></div>
+					<span class="status-chip"><span class="status-dot"></span>Investigations closed</span>
+				</article>
+				<article class="summary-card" aria-label="Total reports">
+					<h3>Total Reports</h3>
+					<div class="stat-value"><?php echo htmlspecialchars((string) $totalIncidents, ENT_QUOTES); ?></div>
+					<span class="status-chip"><span class="status-dot"></span>All time incident submissions</span>
+				</article>
+			</section>
 			<section class="card" aria-labelledby="incident-list-title">
 				<h2 id="incident-list-title">All Incident Reports</h2>
 				<p>Review the full history of submitted incident reports across the AMC.</p>
@@ -1046,6 +1256,84 @@ function format_incident_location(string $incidentLocation, string $equipmentNam
 									<textarea id="actions-<?php echo htmlspecialchars((string) $investigation['investigation_id'], ENT_QUOTES); ?>" name="actions_taken" placeholder="Enter actions taken..." required><?php echo htmlspecialchars($invActions, ENT_QUOTES); ?></textarea>
 									<button class="assign-button investigation-button" type="submit" name="update_investigation">Close Investigation</button>
 								</form>
+							</div>
+						<?php endforeach; ?>
+					</div>
+				<?php endif; ?>
+			</section>
+			<section class="card" aria-labelledby="closed-investigation-title">
+				<h2 id="closed-investigation-title">Closed Investigations</h2>
+				<p>Recently closed investigations with recorded findings and actions.</p>
+				<?php if ($closedInvestigationsError !== null): ?>
+					<div class="alert" role="alert"><?php echo htmlspecialchars($closedInvestigationsError, ENT_QUOTES); ?></div>
+				<?php endif; ?>
+				<?php if (empty($closedInvestigations) && $closedInvestigationsError === null): ?>
+					<p class="incident-meta">No closed investigations recorded yet.</p>
+				<?php endif; ?>
+				<?php if (!empty($closedInvestigations)): ?>
+					<div class="investigation-list scrollable">
+						<?php foreach ($closedInvestigations as $investigation): ?>
+							<?php
+								$invSeverity = (string) ($investigation['severity'] ?? 'low');
+								$invCategory = (string) ($investigation['category'] ?? 'other');
+								$invStatus = (string) ($investigation['status'] ?? 'closed');
+								$assignedName = trim((string) ($investigation['assigned_name'] ?? ''));
+								$assignedRole = trim((string) ($investigation['assigned_role'] ?? ''));
+								$assignedLabel = $assignedName !== '' ? $assignedName : 'Unassigned';
+								if ($assignedRole !== '') {
+									$assignedLabel .= ' · ' . $assignedRole;
+								}
+								$invClosed = trim((string) ($investigation['closed_at'] ?? ''));
+								$invDescription = trim((string) ($investigation['incident_description'] ?? ''));
+								$invFindings = trim((string) ($investigation['findings'] ?? ''));
+								$invActions = trim((string) ($investigation['actions_taken'] ?? ''));
+								$invEquipmentName = trim((string) ($investigation['equipment_name'] ?? ''));
+								$invEquipmentLocation = trim((string) ($investigation['equipment_location'] ?? ''));
+								$invLocation = format_incident_location(
+									(string) ($investigation['location'] ?? ''),
+									$invEquipmentName,
+									$invEquipmentLocation
+								);
+							?>
+							<div class="investigation-item">
+								<div class="incident-header">
+									<div>
+										<strong>Investigation #<?php echo htmlspecialchars((string) $investigation['investigation_id'], ENT_QUOTES); ?></strong>
+										<div class="incident-meta"><span class="incident-label">Incident:</span> #<?php echo htmlspecialchars((string) $investigation['incident_id'], ENT_QUOTES); ?></div>
+									</div>
+									<div class="badges">
+										<span class="badge severity-<?php echo htmlspecialchars($invSeverity, ENT_QUOTES); ?>"><?php echo htmlspecialchars($severityLabels[$invSeverity] ?? ucfirst($invSeverity), ENT_QUOTES); ?></span>
+										<span class="badge"><?php echo htmlspecialchars($categoryLabels[$invCategory] ?? ucfirst($invCategory), ENT_QUOTES); ?></span>
+										<span class="badge status">Closed</span>
+									</div>
+								</div>
+								<div class="incident-details">
+									<div class="incident-detail">
+										<span class="incident-label">Assigned to:</span>
+										<span><?php echo htmlspecialchars($assignedLabel, ENT_QUOTES); ?></span>
+									</div>
+									<div class="incident-detail">
+										<span class="incident-label">Closed:</span>
+										<span><?php echo htmlspecialchars($invClosed !== '' ? $invClosed : 'N/A', ENT_QUOTES); ?></span>
+									</div>
+									<?php if ($invLocation !== ''): ?>
+										<div class="incident-detail">
+											<span class="incident-label">Location:</span>
+											<span><?php echo htmlspecialchars($invLocation, ENT_QUOTES); ?></span>
+										</div>
+									<?php endif; ?>
+								</div>
+								<?php if ($invDescription !== ''): ?>
+									<div class="incident-description">
+										<div><span class="incident-label">Description:</span> <?php echo nl2br(htmlspecialchars($invDescription, ENT_QUOTES)); ?></div>
+									</div>
+								<?php endif; ?>
+								<?php if ($invFindings !== '' || $invActions !== ''): ?>
+									<div class="incident-description">
+										<div><span class="incident-label">Findings:</span> <?php echo nl2br(htmlspecialchars($invFindings !== '' ? $invFindings : 'N/A', ENT_QUOTES)); ?></div>
+										<div style="margin-top: 0.4rem;"><span class="incident-label">Actions:</span> <?php echo nl2br(htmlspecialchars($invActions !== '' ? $invActions : 'N/A', ENT_QUOTES)); ?></div>
+									</div>
+								<?php endif; ?>
 							</div>
 						<?php endforeach; ?>
 					</div>

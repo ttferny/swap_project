@@ -5,15 +5,73 @@ require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'manager.console');
+$historyFallback = dashboard_home_path($currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
 	$userFullName = 'Guest User';
 }
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
 $logoutToken = generate_csrf_token('logout_form');
+
+if (!function_exists('format_manager_booking_time')) {
+	function format_manager_booking_time(?string $timestamp): string
+	{
+		if ($timestamp === null) {
+			return 'Not recorded';
+		}
+		$cleanTimestamp = trim($timestamp);
+		if ($cleanTimestamp === '') {
+			return 'Not recorded';
+		}
+		try {
+			$displayDate = new DateTimeImmutable($cleanTimestamp);
+			return $displayDate->format('M j, Y · g:ia');
+		} catch (Throwable $exception) {
+			return $cleanTimestamp;
+		}
+	}
+}
+
+$pastBookings = [];
+$pastBookingsError = '';
+$pastBookingsLimit = 8;
+
+if ($conn instanceof mysqli) {
+	$pastBookingsQuery = "
+		SELECT
+			b.booking_id,
+			b.start_time,
+			b.end_time,
+			COALESCE(u.full_name, 'Unknown Requester') AS requester_name,
+			COALESCE(u.tp_admin_no, 'N/A') AS requester_identifier,
+			e.name AS equipment_name,
+			TIMESTAMPDIFF(MINUTE, b.start_time, b.end_time) AS duration_minutes
+		FROM bookings b
+		INNER JOIN users u ON u.user_id = b.requester_id
+		INNER JOIN equipment e ON e.equipment_id = b.equipment_id
+		WHERE b.start_time < NOW()
+			AND b.status IN ('approved', 'completed')
+		ORDER BY b.start_time DESC
+		LIMIT " . (int) $pastBookingsLimit;
+
+	$pastResult = mysqli_query($conn, $pastBookingsQuery);
+	if ($pastResult instanceof mysqli_result) {
+		while ($row = mysqli_fetch_assoc($pastResult)) {
+			$row['start_label'] = format_manager_booking_time($row['start_time'] ?? null);
+			$row['end_label'] = format_manager_booking_time($row['end_time'] ?? null);
+			$row['duration_minutes'] = max(0, (int) ($row['duration_minutes'] ?? 0));
+			$pastBookings[] = $row;
+		}
+		mysqli_free_result($pastResult);
+	} else {
+		$pastBookingsError = 'Unable to load past bookings right now.';
+	}
+} else {
+	$pastBookingsError = 'Database connection unavailable.';
+}
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -24,6 +82,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
 			rel="stylesheet"
 		/>
+		<script src="assets/js/history-guard.js" defer></script>
 		<style>
 			:root {
 				--bg: #f8fbff;
@@ -176,7 +235,7 @@ $logoutToken = generate_csrf_token('logout_form');
 			.logout-form button {
 				width: 100%;
 				border: none;
-				border-radius: 0.75rem;
+				border-radius: 0.85rem;
 				padding: 0.65rem 1rem;
 				font-size: 0.95rem;
 				font-weight: 600;
@@ -184,11 +243,28 @@ $logoutToken = generate_csrf_token('logout_form');
 				background: var(--accent);
 				cursor: pointer;
 				transition: transform 0.2s ease, box-shadow 0.2s ease;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 0.45rem;
+				letter-spacing: 0.02em;
+				box-shadow: 0 10px 20px rgba(16, 185, 129, 0.25);
 			}
 
 			.logout-form button:hover {
 				transform: translateY(-1px);
-				box-shadow: 0 10px 20px rgba(16, 185, 129, 0.25);
+				box-shadow: 0 12px 26px rgba(16, 185, 129, 0.35);
+			}
+
+			.logout-form button:focus-visible {
+				outline: 2px solid rgba(255, 255, 255, 0.75);
+				outline-offset: 2px;
+			}
+
+			.logout-form button svg {
+				width: 18px;
+				height: 18px;
+				fill: currentColor;
 			}
 
 			main {
@@ -259,6 +335,100 @@ $logoutToken = generate_csrf_token('logout_form');
 				box-shadow: 0 15px 35px rgba(16, 185, 129, 0.35);
 			}
 
+			.history-panel {
+				margin-top: 3rem;
+				display: grid;
+				gap: 1.5rem;
+			}
+
+			.history-card {
+				background: var(--card);
+				border: 1px solid #e2e8f0;
+				border-radius: 1rem;
+				padding: 1.5rem;
+				box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+			}
+
+			.history-card__header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 1.25rem;
+				flex-wrap: wrap;
+			}
+
+			.history-card__header h2 {
+				margin: 0;
+			}
+
+			.history-card__eyebrow {
+				margin: 0;
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+				font-size: 0.78rem;
+				color: var(--muted);
+			}
+
+			.history-card__support {
+				margin: 0;
+				color: var(--muted);
+				max-width: 420px;
+			}
+
+			.history-card__list {
+				list-style: none;
+				margin: 1.25rem 0 0;
+				padding: 0;
+				display: flex;
+				flex-direction: column;
+				gap: 1rem;
+			}
+
+			.history-row {
+				display: flex;
+				justify-content: space-between;
+				gap: 1rem;
+				border: 1px solid #edf2f7;
+				border-radius: 0.9rem;
+				padding: 1rem 1.1rem;
+				background: #fdfefe;
+			}
+
+			.history-row__primary {
+				display: flex;
+				flex-direction: column;
+				gap: 0.25rem;
+			}
+
+			.history-row__equipment {
+				margin: 0;
+				font-weight: 600;
+			}
+
+			.history-row__requester {
+				margin: 0;
+				color: var(--muted);
+				font-size: 0.9rem;
+			}
+
+			.history-row__meta {
+				display: flex;
+				flex-direction: column;
+				gap: 0.35rem;
+				text-align: right;
+				font-size: 0.9rem;
+				color: var(--muted);
+			}
+
+			.status-error {
+				color: #b91c1c;
+				font-weight: 600;
+			}
+
+			.status-muted {
+				color: var(--muted);
+			}
+
 			@media (max-width: 640px) {
 				.banner {
 					flex-direction: column;
@@ -278,6 +448,15 @@ $logoutToken = generate_csrf_token('logout_form');
 				.search-bar input {
 					min-width: 0;
 					width: 100%;
+				}
+
+				.history-row {
+					flex-direction: column;
+					align-items: flex-start;
+				}
+
+				.history-row__meta {
+					text-align: left;
 				}
 			}
 		</style>
@@ -331,7 +510,19 @@ $logoutToken = generate_csrf_token('logout_form');
 							<form class="logout-form" method="post" action="logout.php">
 								<input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($logoutToken, ENT_QUOTES); ?>" />
 								<input type="hidden" name="redirect_to" value="login.php" />
-								<button type="submit">Log Out</button>
+								<button type="submit">
+									<span>Log out</span>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 24 24"
+										role="img"
+										aria-hidden="true"
+									>
+										<path
+											d="M10 17l5-5-5-5v3H3v4h7zm9-12h-6v2h6v12h-6v2h6a2 2 0 002-2V7a2 2 0 00-2-2z"
+										/>
+									</svg>
+								</button>
 							</form>
 						</div>
 					</details>
@@ -363,6 +554,44 @@ $logoutToken = generate_csrf_token('logout_form');
 					<h2>Analytics Dashboard</h2>
 					<p>Track equipment utilisation and safety trends in one place.</p>
 				</a>
+			</section>
+			<section class="history-panel" aria-labelledby="past-bookings-heading">
+				<div class="history-card">
+					<div class="history-card__header">
+						<div>
+							<p class="history-card__eyebrow">Completed sessions</p>
+							<h2 id="past-bookings-heading">Recent Past Bookings</h2>
+						</div>
+						<p class="history-card__support">
+							Quick reference for bookings that already ran so you can trace who used what and when.
+						</p>
+					</div>
+					<?php if ($pastBookingsError !== ''): ?>
+						<p class="status-error" role="alert"><?php echo htmlspecialchars($pastBookingsError, ENT_QUOTES); ?></p>
+					<?php elseif (empty($pastBookings)): ?>
+						<p class="status-muted" role="status">No completed bookings recorded yet.</p>
+					<?php else: ?>
+						<ul class="history-card__list">
+							<?php foreach ($pastBookings as $booking): ?>
+								<li class="history-row">
+									<div class="history-row__primary">
+										<p class="history-row__equipment"><?php echo htmlspecialchars($booking['equipment_name'], ENT_QUOTES); ?></p>
+										<p class="history-row__requester">
+											<?php echo htmlspecialchars($booking['requester_name'], ENT_QUOTES); ?>
+											<span aria-hidden="true"> · </span>
+											<span><?php echo htmlspecialchars($booking['requester_identifier'], ENT_QUOTES); ?></span>
+										</p>
+									</div>
+									<div class="history-row__meta">
+										<span><strong>Start:</strong> <?php echo htmlspecialchars($booking['start_label'], ENT_QUOTES); ?></span>
+										<span><strong>End:</strong> <?php echo htmlspecialchars($booking['end_label'], ENT_QUOTES); ?></span>
+										<span><strong>Duration:</strong> <?php echo htmlspecialchars($booking['duration_minutes'] > 0 ? $booking['duration_minutes'] . ' min' : 'Not set', ENT_QUOTES); ?></span>
+									</div>
+								</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+				</div>
 			</section>
 		</main>
 	</body>

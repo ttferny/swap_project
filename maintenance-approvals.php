@@ -5,15 +5,26 @@ require_once __DIR__ . '/session.php';
 require_once __DIR__ . '/db.php';
 
 $currentUser = enforce_capability($conn, 'approvals.maintenance');
+enforce_role_access(['admin', 'manager', 'technician'], $currentUser);
 $userFullName = trim((string) ($currentUser['full_name'] ?? ''));
 if ($userFullName === '') {
     $userFullName = 'Manager';
 }
+$historyFallback = dashboard_home_path($currentUser);
 $roleDisplay = trim((string) ($currentUser['role_name'] ?? 'Manager'));
 $logoutToken = generate_csrf_token('logout_form');
 
 $decisionError = null;
 $decisionNotice = null;
+$decisionFlash = flash_retrieve('maintenance_approvals');
+if (is_array($decisionFlash)) {
+    if (array_key_exists('error', $decisionFlash)) {
+        $decisionError = $decisionFlash['error'];
+    }
+    if (array_key_exists('notice', $decisionFlash)) {
+        $decisionNotice = $decisionFlash['notice'];
+    }
+}
 
 function format_datetime(?string $value): string
 {
@@ -108,6 +119,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['maintenance_decision'
         record_system_error($maintenanceException, ['route' => 'maintenance-approvals', 'task_id' => $taskId, 'decision' => $decision]);
         $decisionError = 'We could not apply that decision. Please try again or contact support.';
     }
+
+    flash_store('maintenance_approvals', [
+        'error' => $decisionError,
+        'notice' => $decisionNotice,
+    ]);
+    redirect_to_current_uri('maintenance-approvals.php');
 }
 
 $managerStats = [
@@ -220,7 +237,7 @@ foreach ($pendingTasks as $task) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-history-fallback="<?php echo htmlspecialchars($historyFallback, ENT_QUOTES); ?>">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -231,11 +248,12 @@ foreach ($pendingTasks as $task) {
             href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
             rel="stylesheet"
         />
+        <script src="assets/js/history-guard.js" defer></script>
         <style>
             :root {
-                --bg: #f8fbff;
-                --accent: #0ea5e9;
-                --accent-soft: #e0f2fe;
+                --bg: #f4fdf7;
+                --accent: #10b981;
+                --accent-soft: #e6fff5;
                 --text: #0f172a;
                 --muted: #64748b;
                 --card: #ffffff;
@@ -251,7 +269,7 @@ foreach ($pendingTasks as $task) {
                 margin: 0;
                 font-family: "Space Grotesk", "Segoe UI", Tahoma, sans-serif;
                 color: var(--text);
-                background: radial-gradient(circle at top, #eefcff, var(--bg));
+                background: radial-gradient(circle at top, #eefdf6, var(--bg));
                 min-height: 100vh;
             }
 
@@ -290,7 +308,7 @@ foreach ($pendingTasks as $task) {
                 gap: 0.5rem;
                 padding: 0.35rem 0.75rem;
                 border-radius: 999px;
-                border: 1px solid #d7def0;
+                border: 1px solid #cdeed9;
                 background: var(--accent-soft);
             }
 
@@ -320,7 +338,7 @@ foreach ($pendingTasks as $task) {
             }
 
             .icon-button:hover {
-                background: #bae6fd;
+                background: #c4f7df;
                 transform: translateY(-1px);
             }
 
@@ -364,6 +382,56 @@ foreach ($pendingTasks as $task) {
                 opacity: 1;
                 transform: translateY(0);
                 pointer-events: auto;
+            }
+
+            .profile-name {
+                margin: 0;
+                font-weight: 600;
+            }
+
+            .profile-role {
+                margin: 0.25rem 0 0.85rem;
+                color: var(--muted);
+                font-size: 0.9rem;
+            }
+
+            .logout-form {
+                margin: 0;
+            }
+
+            .logout-form button {
+                width: 100%;
+                border: none;
+                border-radius: 0.85rem;
+                padding: 0.65rem 1rem;
+                font-size: 0.95rem;
+                font-weight: 600;
+                color: #fff;
+                background: #10b981;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.45rem;
+                letter-spacing: 0.02em;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                box-shadow: 0 10px 20px rgba(16, 185, 129, 0.25);
+            }
+
+            .logout-form button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 12px 26px rgba(16, 185, 129, 0.35);
+            }
+
+            .logout-form button:focus-visible {
+                outline: 2px solid rgba(255, 255, 255, 0.75);
+                outline-offset: 2px;
+            }
+
+            .logout-form button svg {
+                width: 18px;
+                height: 18px;
+                fill: currentColor;
             }
 
             main {
@@ -461,10 +529,44 @@ foreach ($pendingTasks as $task) {
             }
 
             .task-card {
-                border: 1px solid rgba(14, 165, 233, 0.25);
-                border-radius: 1rem;
-                padding: 1rem 1.25rem;
-                background: rgba(224, 242, 254, 0.45);
+                position: relative;
+                border-radius: 1.1rem;
+                padding: 1.2rem 1.35rem 1.2rem 1.85rem;
+                border: 1px solid rgba(226, 232, 240, 0.9);
+                background: linear-gradient(130deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.03));
+                box-shadow: 0 20px 38px rgba(15, 23, 42, 0.08);
+                overflow: hidden;
+                --task-accent: #10b981;
+            }
+
+            .task-card::before {
+                content: "";
+                position: absolute;
+                left: 0.85rem;
+                top: 1rem;
+                bottom: 1rem;
+                width: 4px;
+                border-radius: 999px;
+                background: var(--task-accent);
+                box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+            }
+
+            .task-card--priority-high {
+                --task-accent: #ef4444;
+                border-color: rgba(239, 68, 68, 0.5);
+                background: linear-gradient(135deg, rgba(254, 226, 226, 0.9), rgba(254, 249, 195, 0.5));
+            }
+
+            .task-card--priority-medium {
+                --task-accent: #f59e0b;
+                border-color: rgba(245, 158, 11, 0.45);
+                background: linear-gradient(135deg, rgba(254, 243, 199, 0.8), rgba(224, 242, 254, 0.5));
+            }
+
+            .task-card--priority-low {
+                --task-accent: #10b981;
+                border-color: rgba(16, 185, 129, 0.45);
+                background: linear-gradient(135deg, rgba(209, 250, 229, 0.8), rgba(224, 242, 254, 0.45));
             }
 
             .task-header {
@@ -558,9 +660,9 @@ foreach ($pendingTasks as $task) {
             }
 
             .decision-button--primary {
-                background: linear-gradient(135deg, #0284c7, #0ea5e9);
+                background: linear-gradient(135deg, #059669, #10b981);
                 color: #fff;
-                box-shadow: 0 15px 30px rgba(14, 165, 233, 0.35);
+                box-shadow: 0 15px 30px rgba(16, 185, 129, 0.35);
             }
 
             .decision-button--secondary {
@@ -584,9 +686,20 @@ foreach ($pendingTasks as $task) {
 
             .history-item {
                 border: 1px solid #e2e8f0;
-                border-radius: 0.9rem;
-                padding: 0.9rem 1rem;
-                background: rgba(248, 250, 255, 0.8);
+                border-radius: 1rem;
+                padding: 1rem 1.15rem;
+                background: rgba(248, 250, 255, 0.85);
+                box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+            }
+
+            .history-item--approved {
+                border-color: rgba(16, 185, 129, 0.4);
+                background: linear-gradient(135deg, rgba(209, 250, 229, 0.9), rgba(240, 253, 244, 0.7));
+            }
+
+            .history-item--rejected {
+                border-color: rgba(239, 68, 68, 0.4);
+                background: linear-gradient(135deg, rgba(254, 226, 226, 0.85), rgba(255, 241, 242, 0.65));
             }
 
             .history-header {
@@ -696,7 +809,19 @@ foreach ($pendingTasks as $task) {
                             <form class="logout-form" method="post" action="logout.php">
                                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($logoutToken, ENT_QUOTES); ?>" />
                                 <input type="hidden" name="redirect_to" value="login.php" />
-                                <button type="submit">Log Out</button>
+                                <button type="submit">
+                                    <span>Log out</span>
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        role="img"
+                                        aria-hidden="true"
+                                    >
+                                        <path
+                                            d="M10 17l5-5-5-5v3H3v4h7zm9-12h-6v2h6v12h-6v2h6a2 2 0 002-2V7a2 2 0 00-2-2z"
+                                        />
+                                    </svg>
+                                </button>
                             </form>
                         </div>
                     </details>
@@ -743,16 +868,19 @@ foreach ($pendingTasks as $task) {
                             <?php foreach ($pendingTasks as $task): ?>
                                 <?php
                                     $priorityClass = 'pill-priority-medium';
+                                    $taskCardPriorityClass = 'task-card--priority-medium';
                                     if ($task['priority'] === 'high') {
                                         $priorityClass = 'pill-priority-high';
+                                        $taskCardPriorityClass = 'task-card--priority-high';
                                     } elseif ($task['priority'] === 'low') {
                                         $priorityClass = 'pill-priority-low';
+                                        $taskCardPriorityClass = 'task-card--priority-low';
                                     }
                                     $csrfValue = generate_csrf_token('maintenance_approval_' . $task['task_id']);
                                     $scheduledLabel = format_datetime($task['scheduled_for']);
                                     $submittedLabel = format_datetime($task['created_at']);
                                 ?>
-                                <li class="task-card">
+                                <li class="task-card <?php echo htmlspecialchars($taskCardPriorityClass, ENT_QUOTES); ?>">
                                     <div class="task-header">
                                         <div>
                                             <p class="task-title"><?php echo htmlspecialchars($task['title'], ENT_QUOTES); ?></p>
@@ -821,8 +949,16 @@ foreach ($pendingTasks as $task) {
                     <?php else: ?>
                         <ul class="history-list">
                             <?php foreach ($recentDecisions as $decision): ?>
-                                <?php $reviewedLabel = format_datetime($decision['manager_reviewed_at']); ?>
-                                <li class="history-item">
+                                <?php
+                                    $reviewedLabel = format_datetime($decision['manager_reviewed_at']);
+                                    $historyItemClass = 'history-item';
+                                    if ($decision['manager_status'] === 'approved') {
+                                        $historyItemClass .= ' history-item--approved';
+                                    } elseif ($decision['manager_status'] === 'rejected') {
+                                        $historyItemClass .= ' history-item--rejected';
+                                    }
+                                ?>
+                                <li class="<?php echo htmlspecialchars($historyItemClass, ENT_QUOTES); ?>">
                                     <div class="history-header">
                                         <span><?php echo htmlspecialchars($decision['equipment_name'], ENT_QUOTES); ?></span>
                                         <span class="history-status <?php echo htmlspecialchars($decision['manager_status'], ENT_QUOTES); ?>">
